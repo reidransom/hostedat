@@ -1,6 +1,6 @@
 # Native secrets and environment: sequential implementation tasks
 
-Status: reviewed task breakdown; tasks 01–14 implemented and verified. Task 15 has not started. Execute in numbered order. The detailed contract and acceptance matrix in `native-secrets-env-plan.md` remain authoritative; this file changes sequencing, not scope.
+Status: tasks 01–15 implemented and verified in numbered order. Integrated acceptance, actual QuickJS/V8 and dashboard smoke, full-suite results and explicit additional-tooling limitations are recorded in `native-secrets-env-verification.md` and `native-secrets-task15-verification.md`. The detailed contract and acceptance matrix in `native-secrets-env-plan.md` remain authoritative; this file changes sequencing, not scope.
 
 ## Review decisions
 
@@ -136,12 +136,13 @@ For each task: inspect current code and existing test patterns; inspect referenc
 
 ### 15 — Complete release acceptance and documentation
 
-- [ ] Run every row of the source plan's acceptance matrix; record commands, observations, and unavailable coverage in `.scratch/native-secrets-env-verification.md`, marking unrun checks explicitly.
+- [x] Run every row of the source plan's acceptance matrix; record commands, observations, and unavailable coverage in `.scratch/native-secrets-env-verification.md`, marking unrun checks explicitly.
 - Launch disposable server/database/key/storage and built CLI. Exercise put/update/sync/list/delete, local/remote checks, failed/successful deploy, rollback, next-invocation updates, and first-deployment dashboard flow.
 - Search disposable database secret fields, management responses, captured logs, and fetched public assets for unique markers. Confirm worker receives expected values without intentionally logging/returning raw markers into captured production-like logs.
 - Run relevant focused Go packages and `make test` once after integration; Makefile currently uses CGO_ENABLED=1 go test ./.... Run `make test-frontend` and `make frontend`; inspect current frontend scripts for any additional required checks. Exercise QuickJS and V8 using documented prerequisites; explicitly record unavailable engine coverage, never substitute mocked engines.
 - Update existing public API/CLI/runtime/architecture docs, docs-site CLI/workers/getting-started pages, server config docs/example, and CHANGELOG with exercised behavior and security limits. Leave README unchanged. Remove development scaffolding.
 - Release gate: no active task unchecked, every acceptance row has evidence or an explicitly unresolved blocker; capability must not be presented as complete while server security enforcement is missing.
+- Evidence: `.scratch/native-secrets-task15-verification.md` and `.scratch/native-secrets-env-verification.md`; all 16 acceptance rows have passing behavioral evidence, actual built-CLI/production-server QuickJS/V8 and first-deployment dashboard smoke passed, `make test` ran once and passed, frontend TypeScript/build and docs build passed. Additional whole-app Svelte check retains seven established unrelated errors; broad QuickJS race checking hits upstream checkptr. These limitations and unrun historical-binary/full-V8-suite coverage are explicit, not claimed green. No missing native-secrets server enforcement was found.
 
 ## Coverage map to original sequential tasks
 

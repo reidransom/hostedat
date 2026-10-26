@@ -536,9 +536,10 @@ import CodeBlock from '../../components/CodeBlock.astro';
 
   <h3>Environment variables & secrets</h3>
   <p>
-    Set environment variables via the API or dashboard. Both are accessed the same way in code, but
-    secret values are omitted from management responses and encrypted at rest. Use secrets for
-    API keys and every name required by an environment declaration.
+    Set environment variables via native <code>hostedat secret put/sync</code>,
+    the API or dashboard. Both plain and secret bindings are accessed the same way
+    in code, but secret values are omitted from management responses and encrypted
+    at rest. Every declared name must be a secret; prefixes never make it public.
   </p>
   <p>
     Before the first deployment, open your site's <strong>Worker → Env Vars</strong> tab,
@@ -547,6 +548,16 @@ import CodeBlock from '../../components/CodeBlock.astro';
     <code>_hostedat.env.json</code> declaration from the Deploy tab. Missing required names and
     invalid types are shown without values; correct them and retry. Existing names retain their
     secret/plain classification on update. Other worker tabs appear after deploying a worker.
+  </p>
+  <p>
+    Commit <code>env.json</code> or <code>env.yml</code> rules, then run
+    <code>hostedat env check --remote --site &lt;site&gt;</code> before deploying.
+    The native CLI packages private canonical metadata; it never uploads local
+    dotenv values or builds your app. The next invocation sees explicit updates
+    as strings, while existing requests/WebSockets retain their snapshots.
+    HTTP and cron fail closed on decryption or declaration errors. Rollback checks
+    current values and never restores an old secret. Do not log or return bindings:
+    at-rest encryption does not prevent authorized worker code from disclosing them.
   </p>
 
   <CodeBlock
@@ -1128,7 +1139,7 @@ hostedat storage update <site> <bucket-id> --public`}
       <tr>
         <td><code>GET</code></td>
         <td><code>/worker/env</code></td>
-        <td>List environment variables (secrets masked)</td>
+        <td>List environment variables (secret values omitted)</td>
       </tr>
       <tr>
         <td><code>DELETE</code></td>

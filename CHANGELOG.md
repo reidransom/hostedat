@@ -4,6 +4,15 @@
 
 ### Changed
 
+- Exercise integrated native-secret release acceptance with the built CLI,
+  disposable production server/key/database, actual first-deployment dashboard,
+  encrypted-field/response/log/public-file marker scans, and real QuickJS and V8
+  HTTP/cron execution. `make test`, frontend TypeScript and production builds
+  pass. Additional Svelte checking retains seven pre-existing unrelated errors;
+  QuickJS whole-package race checking is blocked by upstream checkptr usage.
+  Operator docs include explicit fresh-database initialization, recovery limits
+  and the GNU C17 flag needed by current v8go on C23-default toolchains.
+
 - Add deploy declaration discovery and `--schema`: JSON/YAML from the invocation
   directory becomes canonical private ZIP metadata even when uploading `dist`.
   Exclude the selected source and reject separately supplied canonical conflicts.
@@ -94,7 +103,7 @@
   all symlink exclusions; ordinary packaging refuses reserved metadata.
   Focused race-enabled regressions, hostile raw HTTP uploads, real QuickJS ASSETS
   and built-CLI smoke passed. This is filename policy, not bundle-content scanning;
-  schema-aware CLI packaging remains a subsequent cutover.
+  canonical schema-aware CLI packaging is integrated above.
 
 - Enforce environment/binding collisions in both directions for KV, D1, object
   storage and Durable Object provisioning under the shared database-backed site
@@ -117,7 +126,7 @@
   invalid environments without reporting a run, and dispatchers propagate errors.
   Disposable legacy migration, rotation/rollback, restart and actual QuickJS
   requests prove decrypted strings, next-invocation updates and in-flight snapshots.
-  Native secret CLI integration remains pending.
+  Native secret CLI integration is included above.
 
 ### Internal
 
@@ -136,8 +145,8 @@
   deterministic canonical JSON, strict rule/name checks, and value-free
   validation diagnostics. Focused race-enabled tests and a disposable consumer
   harness exercise equivalent formats, invalid/duplicate/oversized documents,
-  required/optional/empty values, exact whitespace, and redaction. This package
-  does not yet enable secret commands, encrypted storage, or deployment checks.
+  required/optional/empty values, exact whitespace, and redaction. The parser is
+  shared by the integrated CLI, encrypted service and deployment/runtime checks.
 - Add invocation-scoped schema discovery and bounded, read-only dotenv helpers
   in `internal/envschema`, using maintained `godotenv` parsing with interpolation
   disabled and duplicate rejection before overwrite. Local shell overlays
@@ -145,8 +154,8 @@
   `.env`, including symlink and hard-link aliases. Focused race-enabled tests
   and a disposable consumer in a read-only, network-isolated sandbox exercise
   discovery conflicts, CRLF/multiline/quote/comment/whitespace behavior, literal
-  substitutions, redacted errors, size limits, and path identity. These helpers
-  are not yet CLI commands or a remote secret-sync implementation.
+  substitutions, redacted errors, size limits, and path identity. Native CLI
+  commands consume these helpers without implicit production dotenv ingestion.
 
 
 ## v2.0.0 — V8 Worker Runtime Migration

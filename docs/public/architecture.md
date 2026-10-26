@@ -2,7 +2,7 @@
 
 ## Overview
 
-hostedat is a self-hosted static site hosting platform with a JavaScript worker runtime. It consists of a Go backend (Echo v4 + GORM) and a React/Vite frontend that is embedded into the binary via `web.DistFS`.
+hostedat is a self-hosted static site hosting platform with a JavaScript worker runtime. It consists of a Go backend (Echo v4 + GORM) and a SvelteKit/Svelte 5 + Vite frontend embedded into the binary via `web.DistFS`.
 
 **Module path:** `github.com/cryguy/hostedat`
 
@@ -22,17 +22,18 @@ internal/
   models/           GORM models with nanoid PKs
   seaweedfs/        SeaweedFS IAM client (CreateUser, CreateAccessKey, PutUserPolicy, etc.)
   storage/          Local file storage manager (zip extraction, site paths, bytecode paths)
-  worker/           Dual-engine JS runtime (V8/QuickJS), bindings, pool management
+  workeradapter/    Platform bindings and invocation environments for github.com/cryguy/worker/v2
 web/
-  src/              React + Vite frontend
+  src/              SvelteKit/Svelte 5 + Vite frontend
   dist/             Build output (embedded into binary)
 ```
 
 ### Shared secret declarations
 
 `internal/envschema` provides a database-free declaration parser and validator,
-shared by environment mutations, deployment/rollback and invocation loading.
-Native CLI command integration remains pending.
+shared by native CLI commands, environment mutations, deployment/rollback and
+invocation loading. `secret put/sync`, local/remote `env check`, and deploy share
+one command-scoped declaration snapshot; only local check reads root dotenv.
 All declarations describe server-side secrets, including names starting with
 `VITE_`; the package never infers public/browser configuration.
 
@@ -367,13 +368,17 @@ The `RequireSiteOwner(db)` middleware is available but handlers perform inline c
 5. **Worker detection**: If `_worker.js` present:
    - Size checked against `MaxScriptSizeKB` (default 1024 KB)
    - Validated and cached via `Engine.CompileAndCache()`
-6. **DB transaction**: `Deployment` record (including nullable canonical
-   `EnvDeclaration`) created, `Site.active_version` and `Site.active_deploy_id`
-   updated atomically. Requirement validation/enforcement during activation and
-   rollback is a pending cutover, not implied by metadata parsing.
+6. **Coordinated activation**: Validate decrypted bindings before compilation and
+   again inside the database-backed same-site transaction. Create the deployment
+   with its nullable canonical `EnvDeclaration`, then update the active IDs and
+   declaration-enforcement flag atomically. Missing/invalid secrets leave the
+   previous deployment active and retire staged assets, bytecode and pools.
 7. **Pool invalidation**: Old worker pool for the previous deploy is invalidated
 
-**Rollback** works by updating `Site.active_version` and `Site.active_deploy_id` to point at a previous deployment. The source for that deployment is already on disk.
+**Rollback** validates the selected artifact's declaration against current secrets
+under the same site transaction before updating active IDs. It never restores
+historical values. Enforced sites reject schema-less targets; explicit empty
+declarations can remove requirements without disabling manifest enforcement.
 
 ---
 
@@ -387,6 +392,13 @@ Two JavaScript engines are supported (selected at build time via build tags):
 - **QuickJS** (default): Interpreted via `modernc.org/quickjs` (pure Go). Runs on all platforms including Windows. No CGO required.
 
 Both engines share the same Workers API, pool management, and execution flow.
+
+Release acceptance exercised real HTTP and cron with both engines, including
+fresh decrypted string bindings and configuration-failure refusal. On toolchains
+whose C default is C23, v8go v0.34.0 requires `CGO_CFLAGS=-std=gnu17` because its
+C header defines `bool`. Upstream QuickJS's VM-internals pointer extraction is
+incompatible with Go checkptr instrumentation: ordinary `make test` and actual
+engine smoke are distinct from a successful whole-package `-race` run.
 
 - Isolate/context pool with per-worker sandboxed execution
 - Script validation happens at deploy time; execution uses pre-warmed runtimes

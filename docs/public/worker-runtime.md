@@ -39,6 +39,15 @@ There is no plaintext-secret fallback. Ordinary undeclared plain bindings remain
 supported. At-rest encryption cannot prevent worker code from returning or
 logging a secret, and does not guarantee memory zeroization.
 
+Provision before the first deployment using native `secret put`/`sync`, or the
+dashboard's Worker → Env Vars tab with Secret selected. Commit flat `env.json`
+or `env.yml` rules, not production values; run `env check --remote --site <site>`
+before `deploy <site> ./dist`. The CLI packages canonical private metadata and
+the server validates it during activation. Rollback checks its artifact against
+current values and does not restore an old secret. Local `.env` is only for local
+checks/application tooling, never an implicit production source. See the
+[CLI reference](cli-reference.md) and [API reference](api-reference.md).
+
 ---
 
 ## `fetch(request, env, ctx)`

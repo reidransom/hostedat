@@ -76,6 +76,24 @@ Created automatically by `hostedat login`. File permissions are set to `0600` (o
 
 Commands that accept a `<site>` argument match exact site IDs, exact subdomain slugs, or case-insensitive display names. If more than one site matches, the command lists the candidates and requires a unique reference; use the site ID to disambiguate. No project linking or saved target is required.
 
+### First secret-backed deployment
+
+1. Commit a flat `env.json` or `env.yml` declaration in the invocation directory.
+   Keep local `.env` ignored; declarations contain rules, never production values.
+2. Run `hostedat env check` for local validation. Provision each production name
+   with hidden `hostedat secret put <site> <name>` or an explicitly named secure
+   `secret sync` source outside the upload tree.
+3. Run `hostedat env check --remote --site <site>`, then
+   `hostedat deploy <site> ./dist`. Build your application separately if needed.
+4. Update values explicitly; the next worker invocation sees the change without
+   redeploying. Rollback checks the target artifact against current values and
+   never restores older secrets. Required active names cannot be deleted.
+
+The dashboard supports the same first-deployment order via Worker → Env Vars
+before uploading a declaration-bearing ZIP. Legacy schema-less sites remain
+supported until their first manifest activation; afterwards every deployment
+must include a declaration, even an explicit empty `{}` when removing rules.
+
 ---
 
 ## Command Summary

@@ -251,6 +251,11 @@ hostedat env check --remote --site my-app`} lang="bash" />
     Packaging keeps case-insensitive dotenv and symlink exclusions. The server
     removes declaration metadata from public assets. Filename rules cannot detect
     secrets renamed or embedded in application bundles.
+    Declaration files (including enum choices) are rules, not a place to store
+    credentials. After the first successful manifest deployment, later uploads
+    must also include a manifest. An explicit empty declaration can remove rules,
+    but does not re-enable schema-less deployments. Dashboard/API rollback checks
+    the selected artifact against current secret values and never restores old values.
   </p>
   <CodeBlock code='hostedat deploy my-app ./dist --schema env.yml' lang="bash" />
 

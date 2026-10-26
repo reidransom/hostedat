@@ -482,6 +482,16 @@ contain a `value` field or a replacement placeholder. Plain bindings include
 `value`, including a valid empty string. Secret rows use AES-256-GCM encrypted
 storage; the server requires operator key configuration and offline migration.
 
+Use the native CLI's hidden prompt or explicit stdin for production secret
+entry rather than placing real values in shell command arguments. There is no
+secret reveal/export endpoint. `GET /version` advertises `secrets-env-v1`; clients
+must negotiate this capability before secret mutations or declaration uploads,
+use HTTPS (explicit loopback-only development exception), and refuse redirects.
+TLS must also be configured at the server or trusted terminating proxy: encrypted
+database fields do not protect plaintext request bodies on an HTTP connection.
+Declared values are server-side only, including `VITE_` names; authorized worker
+code can still log or return its bindings.
+
 Environment writes and every declaration name (including absent optional names)
 must not collide with a site's KV, D1, storage or Durable Object binding.
 `ASSETS`, `__PROTO__`, `PROTOTYPE`, and `CONSTRUCTOR` are reserved

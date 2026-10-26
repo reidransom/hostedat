@@ -1,6 +1,6 @@
 # Native hostedat secrets and environment workflow
 
-This is an implementation plan. No platform code, site settings, or secret values have changed.
+Implementation and integrated acceptance are complete. Evidence and explicit tooling/coverage limitations are recorded in `native-secrets-env-verification.md` and per-task reports. All smoke data/credentials were disposable; no production site or migration was changed.
 
 ## Goal
 
@@ -201,7 +201,7 @@ Work through these tasks in order. Each task includes its focused verification. 
 
 17. [x] Integrate declarations with CLI upload packaging. Both source formats become canonical flat JSON at `_hostedat.env.json` in memory; selected source files/aliases are excluded and separately supplied canonical metadata is rejected. Manifest-bearing uploads negotiate capability and run declaration-only read-only remote preflight, while activation remains transactional on the server. Focused race-enabled regressions and actual built-CLI/production-server smoke prove invocation-directory JSON/YAML discovery with `dist`, explicit selection, missing-secret/old-server refusal, five identical inspected ZIP declarations/persisted snapshots, unchanged legacy uploads and real QuickJS fetches. Deploy never loads local values, syncs secrets or builds apps. Evidence: `native-secrets-task14-verification.md`.
 
-18. [ ] Run the complete acceptance matrix and document verified behavior. Launch a disposable server/database/storage directory, build the real CLI, exercise secret operations and failed/successful deploys, and fetch the deployed worker. Check public assets, logs, and management responses for secret markers. Run the relevant Go packages and the existing full suite once, plus dashboard typecheck/build for changed API consumers. Record unavailable QuickJS/V8 coverage. Update the existing CLI/API/runtime/architecture and server configuration docs and `CHANGELOG.md`. Leave README unchanged. Do not describe unexercised commands or security guarantees as available.
+18. [x] Run the complete acceptance matrix and document verified behavior. Disposable built-CLI/production-server smoke exercised secret CRUD/atomic merge, local/remote checks, failed/successful deploy, rollback/current values, marker scans and actual first-deployment dashboard flow. Full `make test` ran once and passed; focused packages, frontend TypeScript/build and docs build passed. Real QuickJS and V8 HTTP/cron execution passed. Additional Svelte check retains seven pre-existing unrelated errors and broad QuickJS race/checkptr remains blocked upstream; unrun checks and limitations are explicit. Existing CLI/API/runtime/architecture, docs-site and server configuration docs plus CHANGELOG updated; README unchanged. Evidence: `native-secrets-env-verification.md`, `native-secrets-task15-verification.md`.
 
 ## Acceptance matrix
 
@@ -230,4 +230,4 @@ For the final smoke run, launch a disposable server with a temporary database an
 
 After implementation, run the relevant Go packages and the existing full-suite command once. Run dashboard typecheck/build when API consumers change. Use the repository's documented QuickJS/V8 prerequisites. A mocked worker does not prove either engine works. Record any engine coverage that could not run.
 
-This plan does not run the suite or claim that any acceptance check has passed.
+The acceptance matrix has been executed through the full project suite and integrated real CLI/server/dashboard/engine smoke; see `native-secrets-env-verification.md` for exact scope, observations, and explicit additional-tooling limitations. This checklist does not assert that every optional or unrelated tool check is green.

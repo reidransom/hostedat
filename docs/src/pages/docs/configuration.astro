@@ -176,6 +176,12 @@ object_storage:
     decryption export, implicit downgrade or runtime plaintext fallback.
     Encryption protects stored data, not against key-holding administrators or
     authorized workers that return/log a secret, and does not zeroize memory.
+    Require HTTPS for management traffic at the server or a trusted TLS terminator;
+    encrypted storage is not transport encryption. CLI loopback HTTP requires an
+    explicit development opt-in and must not be used for remote production writes.
+    Before routing traffic after migration, rotation or restore, validate remote
+    declarations and exercise a non-disclosing worker request. Verify expected
+    behavior, not by printing or exporting decrypted values.
   </p>
 
   <h3>database.driver</h3>
