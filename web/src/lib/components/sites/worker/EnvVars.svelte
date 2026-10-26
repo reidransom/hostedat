@@ -43,6 +43,7 @@
 
 <div class="space-y-4">
 	<h4 class="font-semibold">Environment Variables</h4>
+	<p class="text-xs text-text-muted">Select Secret for production values required by your deployment's environment declaration. Values are entered explicitly here, never loaded from a local dotenv file. Upload your declaration as <code>_hostedat.env.json</code> inside the deployment ZIP.</p>
 
 	{#if items.length > 0}
 		<div class="space-y-2">

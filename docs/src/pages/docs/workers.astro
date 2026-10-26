@@ -537,7 +537,16 @@ import CodeBlock from '../../components/CodeBlock.astro';
   <h3>Environment variables & secrets</h3>
   <p>
     Set environment variables via the API or dashboard. Both are accessed the same way in code, but
-    secrets are masked in API list responses. Use secrets for API keys and sensitive values.
+    secret values are omitted from management responses and encrypted at rest. Use secrets for
+    API keys and every name required by an environment declaration.
+  </p>
+  <p>
+    Before the first deployment, open your site's <strong>Worker → Env Vars</strong> tab,
+    enter production values explicitly and select <strong>Secret</strong>. Local dotenv files
+    never populate this form. Upload a ZIP with an artifact-root
+    <code>_hostedat.env.json</code> declaration from the Deploy tab. Missing required names and
+    invalid types are shown without values; correct them and retry. Existing names retain their
+    secret/plain classification on update. Other worker tabs appear after deploying a worker.
   </p>
 
   <CodeBlock

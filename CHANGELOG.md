@@ -4,6 +4,14 @@
 
 ### Changed
 
+- Make the dashboard environment editor available on owned empty sites, before
+  the first worker deployment. Keep worker-only tabs hidden until a worker exists,
+  preserve secret classification on replacement, and display value-free required
+  name/type errors. Dashboard uploads now offer only supported ZIP archives and
+  clear a previously selected ZIP when an unsupported file is chosen. Actual
+  headless first-deployment provisioning, encrypted secret CRUD, ownership denial
+  and real QuickJS fetches were exercised.
+
 - Add authenticated per-site atomic environment bulk merge and read-only remote
   declaration validation. Entire bounded batches commit or roll back together,
   preserve omitted bindings/IDs, and return metadata only. Candidate declarations

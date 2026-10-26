@@ -28,6 +28,8 @@
 		{ id: 'logs', label: 'Logs', icon: ScrollText }
 	];
 
+	const visibleTabs = $derived(hasWorker ? tabs : tabs.filter((tab) => tab.id === 'env'));
+
 	let envVars = $state<WorkerEnvVar[]>([]);
 	let kvNamespaces = $state<KVNamespace[]>([]);
 	let d1Databases = $state<D1Database[]>([]);
@@ -58,14 +60,12 @@
 </script>
 
 {#if !hasWorker}
-	<div class="py-8 text-center">
-		<p class="text-sm text-text-muted">No worker deployed. Deploy a site with a worker script to configure bindings.</p>
-	</div>
-{:else}
+	<p class="mb-4 text-sm text-text-muted">Configure environment variables and secrets before your first deployment. Other worker bindings and logs are available after deploying a worker script.</p>
+{/if}
 	<div class="flex gap-6">
 		<!-- Vertical tab list -->
 		<nav class="w-40 shrink-0 space-y-1">
-			{#each tabs as tab}
+			{#each visibleTabs as tab}
 				{@const Icon = tab.icon}
 				<button
 					onclick={() => handleTabChange(tab.id)}
@@ -84,17 +84,16 @@
 		<div class="flex-1 min-w-0">
 			{#if activeTab === 'env'}
 				<EnvVars {siteId} items={envVars} onRefresh={loadEnv} />
-			{:else if activeTab === 'kv'}
+			{:else if hasWorker && activeTab === 'kv'}
 				<KVPanel {siteId} items={kvNamespaces} onRefresh={loadKV} />
-			{:else if activeTab === 'd1'}
+			{:else if hasWorker && activeTab === 'd1'}
 				<D1Panel {siteId} items={d1Databases} onRefresh={loadD1} />
-			{:else if activeTab === 'do'}
+			{:else if hasWorker && activeTab === 'do'}
 				<DurableObjects {siteId} items={doNamespaces} onRefresh={loadDO} />
-			{:else if activeTab === 'crons'}
+			{:else if hasWorker && activeTab === 'crons'}
 				<CronPanel {siteId} items={cronSchedules} onRefresh={loadCrons} />
-			{:else if activeTab === 'logs'}
+			{:else if hasWorker && activeTab === 'logs'}
 				<LogViewer items={logs} onRefresh={loadLogs} />
 			{/if}
 		</div>
 	</div>
-{/if}

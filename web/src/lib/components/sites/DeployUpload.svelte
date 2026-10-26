@@ -16,8 +16,9 @@
 	let dragOver = $state(false);
 
 	function handleFile(f: File) {
-		if (!f.name.endsWith('.tar.gz') && !f.name.endsWith('.tgz') && !f.name.endsWith('.zip')) {
-			error = 'File must be a .tar.gz or .zip archive';
+		if (!f.name.endsWith('.zip')) {
+			file = null;
+			error = 'File must be a .zip archive';
 			return;
 		}
 		file = f;
@@ -56,7 +57,7 @@
 <div class="space-y-4">
 	<div>
 		<h3 class="text-lg font-semibold mb-1">Deploy</h3>
-		<p class="text-sm text-text-muted">Upload a .tar.gz or .zip archive of your site.</p>
+		<p class="text-sm text-text-muted">Upload a .zip archive of your site.</p>
 	</div>
 
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -69,7 +70,7 @@
 	>
 		<input
 			type="file"
-			accept=".tar.gz,.tgz,.zip"
+			accept=".zip"
 			class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
 			onchange={handleInput}
 		/>

@@ -865,6 +865,21 @@ Set via `POST /api/v1/sites/:id/worker/env` with `secret: true`. Values are omit
 const apiKey = env.API_SECRET; // full string, not masked
 ```
 
+### Provisioning Before the First Deployment
+
+On a site you own, open **Worker → Env Vars** even when no worker has been deployed.
+Enter each production value explicitly and select **Secret** for every name in
+the deployment declaration. The form never reads local dotenv files. Secret
+values are hidden in the list; entering an existing name requires a new value
+and preserves its secret/plain classification.
+
+Then open **Deploy** and upload a ZIP containing the worker and an artifact-root
+`_hostedat.env.json` declaration. Missing required names and invalid types appear
+as value-free errors; failed uploads leave the prior deployment (or empty site)
+unchanged. Correct the named values in Env Vars and retry. Other worker tabs
+become available once a worker is deployed. Active required secrets cannot be
+deleted, and updates must continue to satisfy the running declaration.
+
 ### KV Namespaces
 
 Namespaces created via `POST /api/v1/sites/:id/worker/kv` appear as bindings under their `name`.

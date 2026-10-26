@@ -1,6 +1,6 @@
 # Native secrets and environment: sequential implementation tasks
 
-Status: reviewed task breakdown; tasks 01–09 implemented and verified. Tasks 10–15 have not started. Execute in numbered order. The detailed contract and acceptance matrix in `native-secrets-env-plan.md` remain authoritative; this file changes sequencing, not scope.
+Status: reviewed task breakdown; tasks 01–10 implemented and verified. Tasks 11–15 have not started. Execute in numbered order. The detailed contract and acceptance matrix in `native-secrets-env-plan.md` remain authoritative; this file changes sequencing, not scope.
 
 ## Review decisions
 
@@ -96,9 +96,10 @@ For each task: inspect current code and existing test patterns; inspect referenc
 
 ### 10 — Dashboard provisioning before first deployment
 
-- [ ] Render environment editor for owned empty sites independently of hasWorker; keep worker-only tabs appropriately gated.
+- [x] Render environment editor for owned empty sites independently of hasWorker; keep worker-only tabs appropriately gated.
 - Display safe required-name/type errors, preserve classification, never source production forms from local dotenv. Keep ZIP-only upload and ownership rules.
 - Proof: actual dashboard provisions a required secret on an empty site, uploads first declaration-bearing ZIP, and fetches working deployment; list/update/delete continue working. Capture visual verification and run changed frontend checks/build.
+- Evidence: `.scratch/native-secrets-task10-verification.md`; actual headless dashboard provisions required secrets before first deployment, displays safe missing/type errors, uploads the first declaration-bearing ZIP and fetches real QuickJS output. Secret/plain list/update/delete, ownership denial, ZIP-only selection and visual captures passed. TypeScript/build pass; existing unrelated Svelte-check diagnostics remain recorded.
 
 ### 11 — Capability negotiation and secure typed client
 
