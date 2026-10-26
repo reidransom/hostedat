@@ -32,6 +32,16 @@
 
 ### Security
 
+- Advertise the versioned `secrets-env-v1` capability alongside unchanged version
+  fields. Add typed Go environment methods and negotiated manifest ZIP uploads;
+  secret mutations fail with upgrade guidance on unsupported servers and bulk
+  never falls back to sequential writes. Require HTTPS with explicit loopback
+  development opt-in; refuse redirects in the shared HTTP client and keep secure
+  errors body-free. Focused race-enabled client/handler checks and actual
+  production-server/QuickJS smoke verified atomic rollback, metadata redaction
+  and next-invocation secret replacement. Native secret/env CLI commands and
+  schema-aware CLI packaging remain separate integrations.
+
 - Enforce canonical declarations before compilation and again under the shared
   database-backed activation lock, validating required presence, decrypted types,
   secret classification and binding collisions. The first manifest activation

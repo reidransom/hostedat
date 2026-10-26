@@ -29,8 +29,34 @@ func (c *Client) Deploy(siteID, dirPath string) (*Deployment, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to zip directory: %w", err)
 	}
+	return c.DeployArchive(siteID, zipData)
+}
 
-	// Build multipart form
+// DeployArchive uploads an already packaged ZIP. Manifest-bearing archives must
+// negotiate the encrypted declaration contract before any upload is sent.
+// Schema-aware source packaging and read-only preflight belong to the caller.
+func (c *Client) DeployArchive(siteID string, zipData []byte) (*Deployment, error) {
+	archive, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
+	if err != nil {
+		return nil, fmt.Errorf("invalid deployment ZIP")
+	}
+	hasManifest := false
+	for _, file := range archive.File {
+		for _, component := range strings.Split(strings.ReplaceAll(file.Name, "\\", "/"), "/") {
+			if artifactpolicy.IsMetadataComponent(component) {
+				hasManifest = true
+			}
+		}
+	}
+	uploader := *c
+	if hasManifest {
+		if err := c.RequireSecretsCapability(); err != nil {
+			return nil, err
+		}
+		uploader.safeErrors = true
+	}
+
+	// Build multipart form.
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	part, err := writer.CreateFormFile("file", "deploy.zip")
@@ -44,14 +70,20 @@ func (c *Client) Deploy(siteID, dirPath string) (*Deployment, error) {
 		return nil, fmt.Errorf("finalizing multipart form: %w", err)
 	}
 
-	resp, err := c.do("POST", "/api/v1/sites/"+siteID+"/deploy", &body, writer.FormDataContentType())
+	resp, err := uploader.do("POST", "/api/v1/sites/"+siteID+"/deploy", &body, writer.FormDataContentType())
 	if err != nil {
+		if hasManifest {
+			return nil, safeClientError(err)
+		}
 		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	var deployment Deployment
 	if err := json.NewDecoder(resp.Body).Decode(&deployment); err != nil {
+		if hasManifest {
+			return nil, safeClientError(err)
+		}
 		return nil, err
 	}
 	return &deployment, nil

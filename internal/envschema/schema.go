@@ -23,6 +23,9 @@ import (
 // MaxDocumentBytes bounds source declarations and canonical metadata to 1 MiB.
 const MaxDocumentBytes = 1 << 20
 
+// SecretsCapability versions the encrypted environment/declaration wire contract.
+const SecretsCapability = "secrets-env-v1"
+
 // Format selects a source syntax, independently of filesystem discovery.
 type Format string
 

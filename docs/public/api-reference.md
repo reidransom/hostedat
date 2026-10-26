@@ -182,7 +182,8 @@ Exchanges a one-time auth code (from the CLI flow) for a JWT.
 
 ### GET /api/v1/version
 
-Public endpoint returning server and minimum CLI version.
+Public endpoint returning server version, minimum CLI version and versioned
+capabilities. Existing version fields remain unchanged.
 
 **Auth:** None
 
@@ -190,9 +191,25 @@ Public endpoint returning server and minimum CLI version.
 ```json
 {
   "version": "1.2.3",
-  "min_cli_version": "1.0.0"
+  "min_cli_version": "1.0.0",
+  "capabilities": ["secrets-env-v1"]
 }
 ```
+
+`secrets-env-v1` advertises encrypted secret persistence, metadata-only secret
+responses, atomic bulk merge, candidate validation, protected declaration
+artifacts, and deployment/rollback/invocation enforcement. Clients must require
+this exact capability before secret mutations or declaration-bearing uploads;
+an absent/unknown capability is not inferred from a high server version. Upgrade
+older servers rather than falling back to individual writes or public manifests.
+
+The Go environment client requires HTTPS. Local development may explicitly set
+`Client.AllowInsecureLoopback` for HTTP to `localhost` or a literal loopback IP;
+this never permits remote HTTP or disables TLS verification. Capability requests
+use the public endpoint without authorization. The shared Go HTTP helper refuses
+all redirects, so neither credentials nor a write body can be forwarded/replayed.
+Use the server's final URL. Environment-client errors retain HTTP status only,
+not server error bodies, decoder details or transport URLs.
 
 ---
 

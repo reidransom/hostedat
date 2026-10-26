@@ -1,6 +1,6 @@
 # Native secrets and environment: sequential implementation tasks
 
-Status: reviewed task breakdown; tasks 01–10 implemented and verified. Tasks 11–15 have not started. Execute in numbered order. The detailed contract and acceptance matrix in `native-secrets-env-plan.md` remain authoritative; this file changes sequencing, not scope.
+Status: reviewed task breakdown; tasks 01–11 implemented and verified. Tasks 12–15 have not started. Execute in numbered order. The detailed contract and acceptance matrix in `native-secrets-env-plan.md` remain authoritative; this file changes sequencing, not scope.
 
 ## Review decisions
 
@@ -103,11 +103,12 @@ For each task: inspect current code and existing test patterns; inspect referenc
 
 ### 11 — Capability negotiation and secure typed client
 
-- [ ] Advertise a versioned secret/environment capability on existing version endpoint only after tasks 01–10 enforce the complete server contract.
+- [x] Advertise a versioned secret/environment capability on existing version endpoint only after tasks 01–10 enforce the complete server contract.
 - Add `internal/client/env.go` typed methods using existing auth/HTTP/error helpers; preserve existing version fields and migrate all affected response consumers.
 - Require HTTPS for secret writes, with explicit loopback development exception; prevent unsafe redirects of secret bodies or authorization. Never expose request/response bodies in CLI errors.
 - Require capability before secret mutations and manifest-bearing uploads; reject old servers with upgrade guidance. No per-name fallback for bulk.
 - Proof: httptest old/new servers, remote HTTP rejection, allowed explicit loopback, redirect refusal, safe errors and atomic bulk; exercise the actual client against the disposable new server.
+- Evidence: `.scratch/native-secrets-task11-verification.md`; race-enabled typed-client/actual-handler checks and production-server/real QuickJS smoke prove exact capability gating, old-server rejection, HTTPS/explicit-loopback policy, all-redirect refusal, value-free errors, atomic bulk/storage rollback and negotiated manifest uploads.
 
 ### 12 — Native secret commands
 

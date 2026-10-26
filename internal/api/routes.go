@@ -5,6 +5,7 @@ import (
 
 	"github.com/cryguy/hostedat/internal/config"
 	"github.com/cryguy/hostedat/internal/environment"
+	"github.com/cryguy/hostedat/internal/envschema"
 	"github.com/cryguy/hostedat/internal/seaweedfs"
 	"github.com/cryguy/hostedat/internal/storage"
 	"github.com/cryguy/worker/v2"
@@ -25,9 +26,10 @@ func RegisterRoutes(e *echo.Echo, db *gorm.DB, cfg *config.Config, store *storag
 
 	// Public version endpoint
 	api.GET("/version", func(c echo.Context) error {
-		return c.JSON(http.StatusOK, map[string]string{
+		return c.JSON(http.StatusOK, map[string]any{
 			"version":         serverVersion,
 			"min_cli_version": cfg.MinCLIVersion,
+			"capabilities":    []string{envschema.SecretsCapability},
 		})
 	})
 

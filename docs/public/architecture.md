@@ -182,6 +182,18 @@ Static serving features:
 
 All API routes are under `/api/v1`. The CLI sends an `X-Hostedat-Version` header; the server rejects versions below `min_cli_version` with `426 Upgrade Required`.
 
+The public version response also advertises `capabilities: ["secrets-env-v1"]`.
+`internal/client/env.go` negotiates this exact contract before mutations,
+candidate validation and manifest-bearing `DeployArchive` uploads. Bulk uses one
+request with no sequential fallback. Typed DTOs omit secret values even when
+decoding a nonconforming response, while retaining empty plaintext strings.
+HTTPS is mandatory for environment operations unless the caller explicitly
+opts into loopback-only HTTP development. The shared client refuses all
+redirects without changing the caller's HTTP transport/timeout. Secure operation
+errors preserve status, never arbitrary response bodies or transport diagnostics.
+Schema-less deployment compatibility is unchanged. Native CLI commands and
+schema-aware source packaging are separate consumer integrations.
+
 ---
 
 ## Authentication
