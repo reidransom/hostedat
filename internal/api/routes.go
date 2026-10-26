@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/cryguy/hostedat/internal/config"
+	"github.com/cryguy/hostedat/internal/environment"
 	"github.com/cryguy/hostedat/internal/seaweedfs"
 	"github.com/cryguy/hostedat/internal/storage"
 	"github.com/cryguy/worker/v2"
@@ -14,7 +15,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func RegisterRoutes(e *echo.Echo, db *gorm.DB, cfg *config.Config, store *storage.Manager, serverVersion string, workerEngine *worker.Engine, s3Client *minio.Client, iamClient *seaweedfs.Client, region string, analyticsDB *gorm.DB) {
+func RegisterRoutes(e *echo.Echo, db *gorm.DB, cfg *config.Config, store *storage.Manager, serverVersion string, workerEngine *worker.Engine, s3Client *minio.Client, iamClient *seaweedfs.Client, region string, analyticsDB *gorm.DB, envService *environment.Service) {
 	// API-wide rate limit (default 20 req/s per IP, separate from global; 0 = disabled)
 	var apiMiddlewares []echo.MiddlewareFunc
 	if cfg.RateLimit.API > 0 {
@@ -38,7 +39,7 @@ func RegisterRoutes(e *echo.Echo, db *gorm.DB, cfg *config.Config, store *storag
 	}
 	apiKeyHandler := &APIKeyHandler{DB: db}
 	adminHandler := &AdminHandler{DB: db, Storage: store, S3Client: s3Client, IAMClient: iamClient}
-	workerHandler := &WorkerHandler{DB: db, DataDir: cfg.Worker.DataDir}
+	workerHandler := &WorkerHandler{DB: db, DataDir: cfg.Worker.DataDir, Environment: envService}
 
 	// Public auth routes — stricter rate limit (default 5 req/s per IP; 0 = disabled)
 	// Auth is Bearer-token only (JWT/API key), never cookies, so CSRF is not applicable.

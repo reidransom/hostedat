@@ -11,7 +11,22 @@
   secret/plain types, renders placeholders locally, and preserves classification
   when updating a name. Verified actual handler requests and a headless
   dashboard update against a disposable server with a real QuickJS worker.
-  This response-only change does not yet encrypt persisted secret values.
+  Persisted secrets now use authenticated encryption as described below.
+
+### Security
+
+- Encrypt worker secrets with versioned AES-256-GCM, random nonces, operator key
+  IDs and site/name/version associated data. Require a restricted key file and
+  explicit offline migration (including uniqueness installation) before startup.
+  Offline rotation verifies and commits atomically; neither operation logs values.
+  Parameterized SQL logging hides bound values. Plain bindings remain supported.
+- Route environment management and runtime loading through one shared service.
+  Missing values are rejected; omitted classification preserves existing secrets.
+  HTTP fails closed before execution on storage/decryption failure; cron skips
+  invalid environments without reporting a run, and dispatchers propagate errors.
+  Disposable legacy migration, rotation/rollback, restart and actual QuickJS
+  requests prove decrypted strings, next-invocation updates and in-flight snapshots.
+  Declaration enforcement and the native secret CLI are not yet enabled.
 
 ### Internal
 
@@ -24,8 +39,8 @@
   offline-maintenance helper installs uniqueness only after resolution.
   Focused race-enabled tests and two real server processes verify concurrent
   same-name upserts, lock serialization and activation rollback, with actual
-  QuickJS invocation before/after rollback. Encryption and declaration
-  enforcement are not yet enabled.
+  QuickJS invocation before/after rollback. Declaration enforcement is not yet
+  enabled.
 - Add the shared `internal/envschema` JSON/YAML secret-declaration parser,
   deterministic canonical JSON, strict rule/name checks, and value-free
   validation diagnostics. Focused race-enabled tests and a disposable consumer

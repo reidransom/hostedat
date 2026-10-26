@@ -72,11 +72,15 @@ func TestBuildEnvFromDB_AllBindingsPopulated(t *testing.T) {
 
 	disp := &mockDispatcher{}
 
-	env := BuildEnvFromDB(BuildEnvOptions{
-		DB:         db,
-		D1DataDir:  "/data/d1",
-		Dispatcher: disp,
+	env, err := BuildEnvFromDB(BuildEnvOptions{
+		DB:          db,
+		Environment: encryptedTestService(t, db),
+		D1DataDir:   "/data/d1",
+		Dispatcher:  disp,
 	}, siteID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// --- SiteID ---
 	if env.SiteID != siteID {
@@ -173,42 +177,60 @@ func TestBuildEnvFromDB_GracefulDegradation(t *testing.T) {
 	db.Create(&models.StorageBucket{ID: "sb1", SiteID: siteID, Name: "FILES", BucketName: "files-bucket"})
 
 	t.Run("MinioNil_StorageNil", func(t *testing.T) {
-		env := BuildEnvFromDB(BuildEnvOptions{DB: db, MinioClient: nil}, siteID, nil)
+		env, err := BuildEnvFromDB(BuildEnvOptions{DB: db, MinioClient: nil}, siteID, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if env.Storage != nil {
 			t.Error("Storage should be nil when MinioClient is nil")
 		}
 	})
 
 	t.Run("D1DataDirEmpty", func(t *testing.T) {
-		env := BuildEnvFromDB(BuildEnvOptions{DB: db, D1DataDir: ""}, siteID, nil)
+		env, err := BuildEnvFromDB(BuildEnvOptions{DB: db, D1DataDir: ""}, siteID, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if env.D1DataDir != "" {
 			t.Errorf("D1DataDir = %q, want empty", env.D1DataDir)
 		}
 	})
 
 	t.Run("NoKVNamespaces", func(t *testing.T) {
-		env := BuildEnvFromDB(BuildEnvOptions{DB: db}, siteID, nil)
+		env, err := BuildEnvFromDB(BuildEnvOptions{DB: db}, siteID, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if env.KV != nil {
 			t.Errorf("KV should be nil when no namespaces exist, got %d entries", len(env.KV))
 		}
 	})
 
 	t.Run("NoD1Databases", func(t *testing.T) {
-		env := BuildEnvFromDB(BuildEnvOptions{DB: db}, siteID, nil)
+		env, err := BuildEnvFromDB(BuildEnvOptions{DB: db}, siteID, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if env.D1Bindings != nil {
 			t.Errorf("D1Bindings should be nil when no databases exist, got %d entries", len(env.D1Bindings))
 		}
 	})
 
 	t.Run("NoDurableObjects", func(t *testing.T) {
-		env := BuildEnvFromDB(BuildEnvOptions{DB: db}, siteID, nil)
+		env, err := BuildEnvFromDB(BuildEnvOptions{DB: db}, siteID, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if env.DurableObjects != nil {
 			t.Errorf("DurableObjects should be nil when no namespaces exist, got %d entries", len(env.DurableObjects))
 		}
 	})
 
 	t.Run("NoEnvVars_EmptyMaps", func(t *testing.T) {
-		env := BuildEnvFromDB(BuildEnvOptions{DB: db}, siteID, nil)
+		env, err := BuildEnvFromDB(BuildEnvOptions{DB: db}, siteID, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if env.Vars == nil {
 			t.Fatal("Vars should be non-nil empty map")
 		}
@@ -224,7 +246,10 @@ func TestBuildEnvFromDB_GracefulDegradation(t *testing.T) {
 	})
 
 	t.Run("DispatcherNil", func(t *testing.T) {
-		env := BuildEnvFromDB(BuildEnvOptions{DB: db, Dispatcher: nil}, siteID, nil)
+		env, err := BuildEnvFromDB(BuildEnvOptions{DB: db, Dispatcher: nil}, siteID, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if env.Dispatcher != nil {
 			t.Error("Dispatcher should be nil when not provided")
 		}
@@ -237,10 +262,13 @@ func TestBuildEnvFromDB_WithDispatcher(t *testing.T) {
 	db := setupFullEnvTestDB(t)
 	disp := &mockDispatcher{}
 
-	env := BuildEnvFromDB(BuildEnvOptions{
+	env, err := BuildEnvFromDB(BuildEnvOptions{
 		DB:         db,
 		Dispatcher: disp,
 	}, "site_disp", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if env.Dispatcher == nil {
 		t.Fatal("Dispatcher should not be nil")
@@ -273,7 +301,10 @@ func TestBuildEnvFromDB_SiteIsolation_AllBindings(t *testing.T) {
 	db.Create(&models.DurableObjectNamespace{ID: "doB", SiteID: "siteB", Name: "DO_B", NamespaceID: "nsB"})
 	db.Create(&models.StorageBucket{ID: "sbB", SiteID: "siteB", Name: "BUCKET_B", BucketName: "bucket-b"})
 
-	envA := BuildEnvFromDB(BuildEnvOptions{DB: db}, "siteA", nil)
+	envA, err := BuildEnvFromDB(BuildEnvOptions{DB: db}, "siteA", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Vars: only siteA.
 	if envA.Vars["KEY"] != "A-val" {
@@ -337,7 +368,10 @@ func TestBuildEnvFromDB_MultipleVarsCorrectlySorted(t *testing.T) {
 		db.Create(&v)
 	}
 
-	env := BuildEnvFromDB(BuildEnvOptions{DB: db}, siteID, nil)
+	env, err := BuildEnvFromDB(BuildEnvOptions{DB: db, Environment: encryptedTestService(t, db)}, siteID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if len(env.Vars) != 3 {
 		t.Errorf("len(Vars) = %d, want 3", len(env.Vars))
@@ -367,7 +401,10 @@ func TestBuildEnvFromDB_KVStoreType(t *testing.T) {
 
 	db.Create(&models.KVNamespace{ID: "kvns_abc", SiteID: siteID, Name: "MY_KV"})
 
-	env := BuildEnvFromDB(BuildEnvOptions{DB: db}, siteID, nil)
+	env, err := BuildEnvFromDB(BuildEnvOptions{DB: db}, siteID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	kvStore, ok := env.KV["MY_KV"]
 	if !ok {
@@ -391,7 +428,10 @@ func TestBuildEnvFromDB_DurableObjectStoreType(t *testing.T) {
 
 	db.Create(&models.DurableObjectNamespace{ID: "do_abc", SiteID: siteID, Name: "MY_DO", NamespaceID: "ns_abc"})
 
-	env := BuildEnvFromDB(BuildEnvOptions{DB: db}, siteID, nil)
+	env, err := BuildEnvFromDB(BuildEnvOptions{DB: db}, siteID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	doStore, ok := env.DurableObjects["MY_DO"]
 	if !ok {

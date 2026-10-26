@@ -70,7 +70,7 @@ func setupTestEnvWithDataDir(t *testing.T, dataDir string) *testEnv {
 	e := echo.New()
 	e.HTTPErrorHandler = CustomErrorHandler
 	e.Use(SubdomainRouter(db, store, cache, cfg.Domain, nil, nil, nil, nil))
-	RegisterRoutes(e, db, cfg, store, "0.1.0", nil, nil, nil, "", nil)
+	RegisterRoutes(e, db, cfg, store, "0.1.0", nil, nil, nil, "", nil, testEnvironmentService(t, db))
 
 	return &testEnv{
 		e:         e,
@@ -108,7 +108,7 @@ func setupTestEnvWithMinVersion(t *testing.T, minVersion string) *testEnv {
 	e := echo.New()
 	e.HTTPErrorHandler = CustomErrorHandler
 	e.Use(SubdomainRouter(db, store, cache, cfg.Domain, nil, nil, nil, nil))
-	RegisterRoutes(e, db, cfg, store, "0.1.0", nil, nil, nil, "", nil)
+	RegisterRoutes(e, db, cfg, store, "0.1.0", nil, nil, nil, "", nil, testEnvironmentService(t, db))
 
 	return &testEnv{
 		e:         e,
@@ -2729,10 +2729,11 @@ func setupTestEnvWithWorker(t *testing.T) *testEnv {
 	}, store)
 	t.Cleanup(func() { workerEngine.Shutdown() })
 
+	envService := testEnvironmentService(t, db)
 	e := echo.New()
 	e.HTTPErrorHandler = CustomErrorHandler
-	e.Use(SubdomainRouter(db, store, cache, cfg.Domain, workerEngine, nil, nil, nil))
-	RegisterRoutes(e, db, cfg, store, "0.1.0", workerEngine, nil, nil, "", nil)
+	e.Use(SubdomainRouter(db, store, cache, cfg.Domain, workerEngine, nil, &WorkerDeps{Environment: envService}, nil))
+	RegisterRoutes(e, db, cfg, store, "0.1.0", workerEngine, nil, nil, "", nil, envService)
 
 	return &testEnv{
 		e:         e,

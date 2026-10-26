@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/cryguy/hostedat/internal/audit"
+	"github.com/cryguy/hostedat/internal/environment"
 	"github.com/cryguy/hostedat/internal/models"
 	"github.com/cryguy/hostedat/internal/workeradapter"
 	"github.com/cryguy/worker/v2"
@@ -13,8 +14,16 @@ import (
 )
 
 type WorkerHandler struct {
-	DB      *gorm.DB
-	DataDir string
+	DB          *gorm.DB
+	DataDir     string
+	Environment *environment.Service
+}
+
+func (h *WorkerHandler) environments() *environment.Service {
+	if h.Environment != nil {
+		return h.Environment
+	}
+	return &environment.Service{DB: h.DB}
 }
 
 // Env Vars
@@ -59,36 +68,18 @@ func (h *WorkerHandler) SetEnvVar(c echo.Context) error {
 		return errorJSON(c, http.StatusForbidden, "access denied")
 	}
 
-	var req struct {
-		Name   string `json:"name"`
-		Value  string `json:"value"`
-		Secret bool   `json:"secret"`
-	}
+	var req environment.Write
 	if err := c.Bind(&req); err != nil {
 		return errorJSON(c, http.StatusBadRequest, "invalid request")
 	}
 
-	if req.Name == "" {
-		return errorJSON(c, http.StatusBadRequest, "name is required")
+	if req.Name == "" || req.Value == nil {
+		return errorJSON(c, http.StatusBadRequest, "name and value are required")
 	}
-
-	var envVar models.WorkerEnvVar
-	err := models.WithSiteTransaction(h.DB, siteID, func(tx *gorm.DB, _ *models.Site) error {
-		var err error
-		envVar, err = models.FindWorkerEnvVar(tx, siteID, req.Name)
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			envVar = models.WorkerEnvVar{
-				SiteID: siteID, Name: req.Name, Value: req.Value, Secret: req.Secret,
-			}
-			return tx.Create(&envVar).Error
-		}
-		if err != nil {
-			return err
-		}
-		envVar.Value = req.Value
-		envVar.Secret = req.Secret
-		return tx.Save(&envVar).Error
-	})
+	envVar, err := h.environments().Set(siteID, req)
+	if errors.Is(err, environment.ErrInput) {
+		return errorJSON(c, http.StatusBadRequest, "invalid environment input")
+	}
 	if err != nil {
 		return errorJSON(c, http.StatusInternalServerError, "failed to set env var")
 	}
@@ -111,8 +102,8 @@ func (h *WorkerHandler) ListEnvVars(c echo.Context) error {
 		return errorJSON(c, http.StatusForbidden, "access denied")
 	}
 
-	var envVars []models.WorkerEnvVar
-	if err := h.DB.Where("site_id = ?", siteID).Find(&envVars).Error; err != nil {
+	envVars, err := h.environments().List(siteID)
+	if err != nil {
 		return errorJSON(c, http.StatusInternalServerError, "failed to list env vars")
 	}
 
@@ -138,13 +129,7 @@ func (h *WorkerHandler) DeleteEnvVar(c echo.Context) error {
 		return errorJSON(c, http.StatusForbidden, "access denied")
 	}
 
-	var envVar models.WorkerEnvVar
-	err := models.WithSiteTransaction(h.DB, siteID, func(tx *gorm.DB, _ *models.Site) error {
-		if err := tx.First(&envVar, "id = ? AND site_id = ?", varID, siteID).Error; err != nil {
-			return err
-		}
-		return tx.Delete(&envVar).Error
-	})
+	envVar, err := h.environments().Delete(siteID, varID)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return errorJSON(c, http.StatusNotFound, "env var not found")
 	}

@@ -231,7 +231,7 @@ const nanoidLength = 12
 | `APIKey` | `id`, `user_id`, `key_hash`, `name` |
 | `Invite` | `id`, `code`, `created_by`, `max_uses`, `use_count`, `expires_at`, `active` |
 | `AuthCode` | `id`, `code`, `user_id`, `code_challenge`, `used`, `expires_at` |
-| `WorkerEnvVar` | `id`, `site_id`, `name`, `value`, `secret` |
+| `WorkerEnvVar` | `id`, `site_id`, `name`, `value` (plain only), `secret`, `secret_version`, `secret_key_id`, `secret_nonce`, `ciphertext` |
 | `KVNamespace` | `id`, `site_id`, `name` |
 | `KVEntry` | `id`, `namespace_id`, `key`, `value`, `metadata`, `expires_at` |
 | `CronSchedule` | `id`, `site_id`, `cron`, `enabled`, `last_run_at` |
@@ -270,13 +270,35 @@ data, stop all writers and workers and back up the database. Inspect only
 choose which IDs to retain/remove, and resolve them in a transaction; no
 automatic winner or value-based deduplication is supported.
 
-Offline encrypted-storage maintenance will call
+Offline encrypted-storage maintenance calls
 `models.InstallWorkerEnvUniqueness(tx)` after explicit resolution, inside its
 maintenance transaction. It rechecks duplicates and installs the unique
 `idx_worker_env_site_name` index on `(site_id, name)`, refusing partial resolution.
 The index is intentionally not installed by automatic model migration.
-The maintenance command and encryption remain subsequent implementation work;
-do not mistake these coordination changes for encrypted secret storage.
+
+### Encrypted environment storage
+
+`internal/environment.Service` owns single upsert, metadata list/delete and
+invocation snapshot loading. Mutations use the same site transaction as activation.
+Secret rows have empty `Value`, format version 1, a key ID, a random 96-bit nonce
+and AES-256-GCM authenticated ciphertext. Associated data binds site ID, exact
+variable name and format version. Plain bindings have no encryption metadata.
+Management DTOs never serialize encrypted fields. List/delete do not decrypt.
+Omitted write values fail, while omitted classification preserves the old flag.
+
+Startup loads the operator-provisioned key file, checks uniqueness is installed,
+and authenticates every secret before starting traffic or cron. Legacy plaintext,
+unknown keys, invalid formats, tampering and cross-binding ciphertext reuse fail
+closed. SQL logging parameterizes query values, including failed writes.
+`BuildEnvFromDB` returns `(*worker.Env, error)`; HTTP does not execute on failure,
+cron skips the run without changing `last_run_at`, and dispatcher factories return
+errors. Each load decrypts into a new in-memory snapshot. Existing invocations and
+WebSockets retain their snapshot; updates affect the next load.
+
+See the Configuration Reference's offline migration, rotation and recovery
+procedure. Keys and databases require separate backups. Encryption does not erase
+old SQLite WAL/free pages/backups, protect against administrators with keys, stop
+authorized workers logging values, or guarantee memory zeroization.
 
 
 ### Site Deletion Cascade
@@ -429,8 +451,9 @@ Config is loaded from a YAML file (path passed as CLI arg). Key settings:
 | `storage_path` | `./data/sites` | Local file storage root |
 | `jwt_secret` | required (32+ chars) | HMAC secret for JWTs |
 | `min_cli_version` |  E| Minimum accepted CLI version (semver) |
-| `database.driver` | `sqlite` | `sqlite`, `postgres`, or `mysql` |
+| `database.driver` | `sqlite` | Only supported configured driver |
 | `database.dsn` | required | Database connection string |
+| `secrets.key_file` | required | Owner-only operator key-file path; no implicit generation |
 | `worker.pool_size` | `4` | Runtimes per site pool |
 | `worker.memory_limit_mb` | `128` | Per-runtime memory limit |
 | `worker.execution_timeout` | `30000` (ms) | Per-request JS timeout |

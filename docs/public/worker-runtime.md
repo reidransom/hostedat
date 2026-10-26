@@ -24,6 +24,15 @@ export default {
 
 Both handlers are optional. A site can have a `fetch` handler only, a `scheduled` handler only, or both.
 
+Secret bindings are decrypted only while constructing a fresh invocation
+environment and remain JavaScript strings. The next invocation sees an update
+without redeploying; an in-flight request or WebSocket keeps its existing snapshot.
+HTTP fails with a generic configuration error without executing the worker if
+storage/decryption fails. Cron skips invalid environments without marking the
+schedule as run. There is no plaintext-secret fallback. Ordinary plain bindings
+remain supported. At-rest encryption cannot prevent worker code from returning
+or logging a secret, and does not guarantee memory zeroization.
+
 ---
 
 ## `fetch(request, env, ctx)`

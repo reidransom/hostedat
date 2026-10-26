@@ -50,9 +50,14 @@ func TestBuildWorkerEnv_PopulatesAllBindings(t *testing.T) {
 
 	// Call buildWorkerEnv with WorkerDeps but nil minio (unit test).
 	deps := &WorkerDeps{
-		D1DataDir: "/test/d1",
+		D1DataDir:   "/test/d1",
+		Environment: testEnvironmentService(t, db),
 	}
-	env := buildWorkerEnv(db, store, cache, &site, deployID, "test.local", deps)
+	migrateTestEnvironment(t, deps.Environment)
+	env, err := buildWorkerEnv(db, store, cache, &site, deployID, "test.local", deps)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// --- SiteID ---
 	if env.SiteID != site.ID {
@@ -166,7 +171,10 @@ func TestBuildWorkerEnv_NilDeps(t *testing.T) {
 	deployID := models.GenerateID()
 
 	// Should not panic with nil deps.
-	env := buildWorkerEnv(db, store, cache, &site, deployID, "test.local", nil)
+	env, err := buildWorkerEnv(db, store, cache, &site, deployID, "test.local", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if env.SiteID != site.ID {
 		t.Errorf("SiteID = %q, want %q", env.SiteID, site.ID)
@@ -198,7 +206,10 @@ func TestBuildWorkerEnv_SPAModePassthrough(t *testing.T) {
 	db.Create(&site)
 
 	deployID := models.GenerateID()
-	env := buildWorkerEnv(db, store, cache, &site, deployID, "test.local", nil)
+	env, err := buildWorkerEnv(db, store, cache, &site, deployID, "test.local", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	fetcher, ok := env.Assets.(*workeradapter.StaticAssetsFetcher)
 	if !ok {

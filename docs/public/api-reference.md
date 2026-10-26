@@ -429,8 +429,8 @@ Create or update an environment variable (upsert by name).
 Environment management responses use `Cache-Control: no-store`. Secret write and
 list responses contain only `id`, `site_id`, `name`, and `secret`; they never
 contain a `value` field or a replacement placeholder. Plain bindings include
-`value`, including a valid empty string. Response redaction does not encrypt
-stored values.
+`value`, including a valid empty string. Secret rows use AES-256-GCM encrypted
+storage; the server requires operator key configuration and offline migration.
 
 **Auth:** JWT or API key (must own site or be admin)
 
@@ -443,9 +443,12 @@ stored values.
 }
 ```
 
-- `name` (string, required): Variable name
-- `value` (string, required): Variable value
-- `secret` (bool, optional): If true, omit the value from write and list responses
+- `name` (string, required): `[A-Za-z_][A-Za-z0-9_]*`
+- `value` (string, required): Explicit value, at most 1 MiB. Omission/null fails;
+  an explicit empty string is distinct and remains supported.
+- `secret` (bool, optional): Encrypt when true. Omission preserves an existing
+  binding's classification (new bindings default to plain). Only explicit false
+  can downgrade an undeclared secret; declared requirements are a later cutover.
 
 **Response:** `200 OK`
 ```json

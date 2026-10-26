@@ -1,6 +1,6 @@
 # Native secrets and environment: sequential implementation tasks
 
-Status: reviewed task breakdown; tasks 01–04 implemented and verified. Tasks 05–15 have not started. Execute in numbered order. The detailed contract and acceptance matrix in `native-secrets-env-plan.md` remain authoritative; this file changes sequencing, not scope.
+Status: reviewed task breakdown; tasks 01–05 implemented and verified. Tasks 06–15 have not started. Execute in numbered order. The detailed contract and acceptance matrix in `native-secrets-env-plan.md` remain authoritative; this file changes sequencing, not scope.
 
 ## Review decisions
 
@@ -51,13 +51,14 @@ For each task: inspect current code and existing test patterns; inspect referenc
 
 ### 05 — Atomic encrypted-storage and runtime cutover
 
-- [ ] Implement AES-256-GCM versioned ciphertext, random nonce, key ID, and site/name/version associated data; secrets never persist in Value, plaintext bindings remain supported.
+- [x] Implement AES-256-GCM versioned ciphertext, random nonce, key ID, and site/name/version associated data; secrets never persist in Value, plaintext bindings remain supported.
 - Add restricted operator-provisioned key-file configuration, strict startup key/data validation, and parameterized safe SQL logging. Never derive/generate replacement keys implicitly.
 - Provide offline transactional migration and rotation commands: reject duplicate rows until explicitly resolved, install uniqueness, encrypt legacy rows and clear live plaintext, verify counts/decryption, and fail atomically on errors. Require stopped writers/workers.
 - Move all environment reads/writes through a small shared service. Single writes distinguish omitted value/secret from explicit values and cannot implicitly downgrade. Deletes/list remain metadata-only without decrypting values.
 - Change BuildEnvFromDB to return (*worker.Env,error); migrate BuildEnvOptions, HTTP builder/dependencies, cron factory/invocation, and retained dispatcher interfaces/tests. Decrypt in memory only; HTTP must not execute on failure, cron must not report success on skipped invocation. No plaintext fallback.
 - Update startup wiring and maintenance documentation together: separate key/database backups, WAL/free-page/old-backup exposure, compaction/retirement, rotation, restore and coordinated binary rollback.
 - Proof: run maintenance on a disposable legacy database; inspect live secret fields for marker absence; restart server; invoke a worker with decrypted string bindings; update a secret and observe next invocation versus existing snapshot. Exercise tampering, wrong/missing keys, cross-binding ciphertext reuse, duplicates, and maintenance rollback. Record real engine coverage.
+- Evidence: `.scratch/native-secrets-task05-verification.md`; focused encrypted-storage/consumer tests, actual offline migration/rotation (including forced rollback), key/duplicate refusal, and restarted production-server QuickJS fetches prove encrypted live rows, decrypted strings, in-flight snapshots, next-invocation updates and fail-closed tampering. Declaration enforcement remains tasks 06/09.
 
 ### 06 — Atomic bulk writes and remote validation
 

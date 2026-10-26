@@ -24,6 +24,12 @@ type Config struct {
 	RateLimit     RateLimitConfig     `yaml:"rate_limit"`
 	Analytics     AnalyticsConfig     `yaml:"analytics"`
 	AuditLog      AuditLogConfig      `yaml:"audit_log"`
+	Secrets       SecretsConfig       `yaml:"secrets"`
+}
+
+// SecretsConfig contains only the operator key-file path, never key material.
+type SecretsConfig struct {
+	KeyFile string `yaml:"key_file"`
 }
 
 type AuditLogConfig struct {
@@ -38,10 +44,10 @@ type AnalyticsConfig struct {
 }
 
 type RateLimitConfig struct {
-	Global float64 `yaml:"global"`  // Requests per second per IP (all routes including static sites)
-	API    float64 `yaml:"api"`     // Requests per second per IP (API routes)
-	Auth   float64 `yaml:"auth"`    // Requests per second per IP (auth routes)
-	Deploy float64 `yaml:"deploy"`  // Requests per second per IP (deploy route)
+	Global float64 `yaml:"global"` // Requests per second per IP (all routes including static sites)
+	API    float64 `yaml:"api"`    // Requests per second per IP (API routes)
+	Auth   float64 `yaml:"auth"`   // Requests per second per IP (auth routes)
+	Deploy float64 `yaml:"deploy"` // Requests per second per IP (deploy route)
 }
 
 type ObjectStorageConfig struct {

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/cryguy/hostedat/internal/config"
+	"github.com/cryguy/hostedat/internal/environment"
 	"github.com/cryguy/hostedat/internal/models"
 	"github.com/cryguy/hostedat/internal/storage"
 	"github.com/labstack/echo/v4"
@@ -65,6 +66,7 @@ func TestSiteTransactionConcurrentEnvUpserts(t *testing.T) {
 	start := make(chan struct{})
 	results := make(chan error, writers)
 	var wg sync.WaitGroup
+	service := testEnvironmentService(t, a)
 	for i := range writers {
 		wg.Add(1)
 		go func(i int) {
@@ -77,7 +79,7 @@ func TestSiteTransactionConcurrentEnvUpserts(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(fmt.Sprintf(`{"name":"SAME","value":"disposable-%d","secret":true}`, i)))
 			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 			rec := httptest.NewRecorder()
-			err := (&WorkerHandler{DB: db}).SetEnvVar(coordinatedContext(site, req, rec))
+			err := (&WorkerHandler{DB: db, Environment: &environment.Service{DB: db, Keys: service.Keys}}).SetEnvVar(coordinatedContext(site, req, rec))
 			if err == nil && rec.Code != http.StatusOK {
 				err = fmt.Errorf("status %d: %s", rec.Code, rec.Body.String())
 			}

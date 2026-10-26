@@ -14,6 +14,12 @@ storage_path: ./data/sites
 #   openssl rand -hex 32
 jwt_secret: "change-me-to-a-random-secret"
 
+# Required operator-provisioned encryption key file; never stored beside archives.
+# Owner-only 0600/0400 JSON. See Configuration Reference for migration/rotation.
+# No key is generated or derived from jwt_secret.
+secrets:
+  key_file: /etc/hostedat/secrets-keys.json
+
 # Minimum CLI version required to use the API.
 # Clients with older versions receive HTTP 426 Upgrade Required.
 # Leave empty to allow all versions.
@@ -21,7 +27,7 @@ min_cli_version: ""
 
 # Database configuration
 database:
-  driver: sqlite        # sqlite | postgres | mysql
+  driver: sqlite        # Only supported driver
   dsn: ./data/hostedat.db
 
 # Registration settings (initial seed — managed at runtime via admin API)

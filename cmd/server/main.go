@@ -19,6 +19,7 @@ import (
 	"github.com/cryguy/hostedat/internal/audit"
 	"github.com/cryguy/hostedat/internal/certs"
 	"github.com/cryguy/hostedat/internal/config"
+	"github.com/cryguy/hostedat/internal/environment"
 	"github.com/cryguy/hostedat/internal/models"
 	"github.com/cryguy/hostedat/internal/seaweedfs"
 	"github.com/cryguy/hostedat/internal/storage"
@@ -40,6 +41,9 @@ var (
 
 func main() {
 	configPath := flag.String("config", "config.yaml", "path to config file")
+	maintenance := flag.String("secrets-maintenance", "", "offline secrets operation: migrate or rotate")
+	oldKeyFile := flag.String("old-key-file", "", "old key file for offline rotation")
+	writersStopped := flag.Bool("writers-stopped", false, "acknowledge all writers and workers are stopped")
 	flag.Parse()
 
 	cfg, err := config.Load(*configPath)
@@ -47,12 +51,41 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
+	keys, err := environment.LoadKeys(cfg.Secrets.KeyFile)
+	if err != nil {
+		log.Fatal(err)
+	}
 	// Ensure data directory exists for SQLite
 	if cfg.Database.Driver == "sqlite" {
 		dir := filepath.Dir(cfg.Database.DSN)
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			log.Fatalf("Failed to create data directory: %v", err)
 		}
+	}
+
+	if *maintenance != "" {
+		if (*maintenance != "migrate" && *maintenance != "rotate") || !*writersStopped {
+			log.Fatal("offline maintenance requires migrate or rotate and --writers-stopped")
+		}
+		oldKeys := keys
+		if *maintenance == "rotate" {
+			oldKeys, err = environment.LoadKeys(*oldKeyFile)
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
+		db, err := models.OpenDB(cfg.Database)
+		if err != nil {
+			log.Fatal("cannot open maintenance database")
+		}
+		count, err := environment.Maintain(db, oldKeys, keys, *maintenance == "rotate")
+		sqlDB, _ := db.DB()
+		_ = sqlDB.Close()
+		if err != nil {
+			log.Fatalf("offline environment maintenance failed: %v", err)
+		}
+		log.Printf("offline environment maintenance complete: %d secrets verified", count)
+		return
 	}
 
 	// Ensure storage directory exists
@@ -63,6 +96,10 @@ func main() {
 	db, err := models.InitDB(cfg.Database)
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
+	}
+	envService := &environment.Service{DB: db, Keys: keys}
+	if err := envService.ValidateStartup(); err != nil {
+		log.Fatal(err)
 	}
 
 	if err := models.SeedDefaults(db, cfg); err != nil {
@@ -171,9 +208,10 @@ func main() {
 	rulesCache := storage.NewSiteRulesCache()
 
 	// Build env factory for cron and service bindings.
-	envFactory := func(siteID string) *worker.Env {
+	envFactory := func(siteID string) (*worker.Env, error) {
 		return workeradapter.BuildEnvFromDB(workeradapter.BuildEnvOptions{
 			DB:          db,
+			Environment: envService,
 			MinioClient: s3Client,
 			PublicS3URL: "https://" + cfg.ObjectStorage.DomainName,
 			D1DataDir:   cfg.Worker.DataDir,
@@ -251,6 +289,7 @@ func main() {
 	}
 
 	workerDeps := &api.WorkerDeps{
+		Environment: envService,
 		MinioClient: s3Client,
 		PublicS3URL: "https://" + cfg.ObjectStorage.DomainName,
 		D1DataDir:   cfg.Worker.DataDir,
@@ -259,7 +298,7 @@ func main() {
 	// Subdomain router must come before API routes
 	e.Use(api.SubdomainRouter(db, store, rulesCache, cfg.Domain, workerEngine, s3Proxy, workerDeps, analyticsCollector))
 
-	api.RegisterRoutes(e, db, cfg, store, version, workerEngine, s3Client, iamClient, cfg.ObjectStorage.Region, analyticsDB)
+	api.RegisterRoutes(e, db, cfg, store, version, workerEngine, s3Client, iamClient, cfg.ObjectStorage.Region, analyticsDB, envService)
 
 	// Serve embedded frontend (SPA fallback)
 	distFS, err := fs.Sub(web.DistFS, "dist")

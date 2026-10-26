@@ -160,11 +160,15 @@ type RevokedToken struct {
 // Worker-related models
 
 type WorkerEnvVar struct {
-	ID     string `gorm:"primaryKey;size:20" json:"id"`
-	SiteID string `gorm:"index;not null" json:"site_id"`
-	Name   string `gorm:"not null" json:"name"`
-	Value  string `gorm:"not null" json:"value"`
-	Secret bool   `gorm:"default:false" json:"secret"`
+	ID            string `gorm:"primaryKey;size:20" json:"id"`
+	SiteID        string `gorm:"index;not null" json:"site_id"`
+	Name          string `gorm:"not null" json:"name"`
+	Value         string `gorm:"not null" json:"value"`
+	Secret        bool   `gorm:"default:false" json:"secret"`
+	SecretVersion int    `json:"-"`
+	SecretKeyID   string `json:"-"`
+	SecretNonce   []byte `json:"-"`
+	Ciphertext    []byte `json:"-"`
 
 	Site Site `gorm:"foreignKey:SiteID" json:"-"`
 }

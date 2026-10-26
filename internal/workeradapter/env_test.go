@@ -36,7 +36,10 @@ func TestBuildEnvFromDB_VarsAndSecrets(t *testing.T) {
 	db.Create(&models.WorkerEnvVar{ID: "ev2", SiteID: siteID, Name: "API_KEY", Value: "secret123", Secret: true})
 	db.Create(&models.WorkerEnvVar{ID: "ev3", SiteID: siteID, Name: "DEBUG", Value: "true", Secret: false})
 
-	env := BuildEnvFromDB(BuildEnvOptions{DB: db}, siteID, nil)
+	env, err := BuildEnvFromDB(BuildEnvOptions{DB: db, Environment: encryptedTestService(t, db)}, siteID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if env.SiteID != siteID {
 		t.Errorf("SiteID = %q, want %q", env.SiteID, siteID)
@@ -63,7 +66,10 @@ func TestBuildEnvFromDB_KVBindings(t *testing.T) {
 	db.Create(&models.KVNamespace{ID: "kvns1", SiteID: siteID, Name: "MY_KV"})
 	db.Create(&models.KVNamespace{ID: "kvns2", SiteID: siteID, Name: "SESSIONS"})
 
-	env := BuildEnvFromDB(BuildEnvOptions{DB: db}, siteID, nil)
+	env, err := BuildEnvFromDB(BuildEnvOptions{DB: db}, siteID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if env.KV == nil {
 		t.Fatal("KV should not be nil")
@@ -85,7 +91,10 @@ func TestBuildEnvFromDB_D1Bindings(t *testing.T) {
 
 	db.Create(&models.D1Database{ID: "d1-1", SiteID: siteID, Name: "MY_DB", DatabaseID: "db123"})
 
-	env := BuildEnvFromDB(BuildEnvOptions{DB: db}, siteID, nil)
+	env, err := BuildEnvFromDB(BuildEnvOptions{DB: db}, siteID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if env.D1Bindings == nil {
 		t.Fatal("D1Bindings should not be nil")
@@ -102,7 +111,10 @@ func TestBuildEnvFromDB_DurableObjectBindings(t *testing.T) {
 
 	db.Create(&models.DurableObjectNamespace{ID: "do1", SiteID: siteID, Name: "COUNTER", NamespaceID: "ns123"})
 
-	env := BuildEnvFromDB(BuildEnvOptions{DB: db}, siteID, nil)
+	env, err := BuildEnvFromDB(BuildEnvOptions{DB: db}, siteID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if env.DurableObjects == nil {
 		t.Fatal("DurableObjects should not be nil")
@@ -115,7 +127,10 @@ func TestBuildEnvFromDB_DurableObjectBindings(t *testing.T) {
 func TestBuildEnvFromDB_NoBindings(t *testing.T) {
 	db := setupEnvTestDB(t)
 
-	env := BuildEnvFromDB(BuildEnvOptions{DB: db}, "empty-site", nil)
+	env, err := BuildEnvFromDB(BuildEnvOptions{DB: db}, "empty-site", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if env.SiteID != "empty-site" {
 		t.Errorf("SiteID = %q", env.SiteID)
@@ -140,7 +155,10 @@ func TestBuildEnvFromDB_NoBindings(t *testing.T) {
 func TestBuildEnvFromDB_D1DataDir(t *testing.T) {
 	db := setupEnvTestDB(t)
 
-	env := BuildEnvFromDB(BuildEnvOptions{DB: db, D1DataDir: "/custom/d1"}, "site1", nil)
+	env, err := BuildEnvFromDB(BuildEnvOptions{DB: db, D1DataDir: "/custom/d1"}, "site1", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if env.D1DataDir != "/custom/d1" {
 		t.Errorf("D1DataDir = %q, want %q", env.D1DataDir, "/custom/d1")
@@ -153,8 +171,14 @@ func TestBuildEnvFromDB_SiteIsolation(t *testing.T) {
 	db.Create(&models.WorkerEnvVar{ID: "ev1", SiteID: "site1", Name: "KEY", Value: "site1-val", Secret: false})
 	db.Create(&models.WorkerEnvVar{ID: "ev2", SiteID: "site2", Name: "KEY", Value: "site2-val", Secret: false})
 
-	env1 := BuildEnvFromDB(BuildEnvOptions{DB: db}, "site1", nil)
-	env2 := BuildEnvFromDB(BuildEnvOptions{DB: db}, "site2", nil)
+	env1, err := BuildEnvFromDB(BuildEnvOptions{DB: db}, "site1", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env2, err := BuildEnvFromDB(BuildEnvOptions{DB: db}, "site2", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if env1.Vars["KEY"] != "site1-val" {
 		t.Errorf("site1 KEY = %q", env1.Vars["KEY"])
@@ -170,7 +194,10 @@ func TestBuildEnvFromDB_StorageSkippedWithoutMinio(t *testing.T) {
 
 	db.Create(&models.StorageBucket{ID: "sb1", SiteID: siteID, Name: "FILES", BucketName: "files-bucket"})
 
-	env := BuildEnvFromDB(BuildEnvOptions{DB: db, MinioClient: nil}, siteID, nil)
+	env, err := BuildEnvFromDB(BuildEnvOptions{DB: db, MinioClient: nil}, siteID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if env.Storage != nil {
 		t.Error("Storage should be nil when MinioClient is nil")

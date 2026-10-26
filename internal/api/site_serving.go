@@ -12,6 +12,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/cryguy/hostedat/internal/analytics"
+	"github.com/cryguy/hostedat/internal/environment"
 	"github.com/cryguy/hostedat/internal/models"
 	"github.com/cryguy/hostedat/internal/storage"
 	"github.com/cryguy/hostedat/internal/workeradapter"
@@ -27,6 +28,7 @@ type WorkerDeps struct {
 	MinioClient *minio.Client
 	PublicS3URL string
 	D1DataDir   string
+	Environment *environment.Service
 }
 
 // internalFiles are files that should never be served directly to visitors.
@@ -330,7 +332,11 @@ func handleWorkerRequest(c echo.Context, db *gorm.DB, store *storage.Manager, ca
 	}
 
 	// Build Env: load env vars, secrets, KV bindings from DB.
-	env := buildWorkerEnv(db, store, cache, site, deployID, domain, workerDeps)
+	env, err := buildWorkerEnv(db, store, cache, site, deployID, domain, workerDeps)
+	if err != nil {
+		c.Set("serve_type", "error")
+		return errorJSON(c, http.StatusInternalServerError, "worker environment configuration failed")
+	}
 
 	// Execute worker.
 	result := workerEngine.Execute(site.ID, deployID, env, workerReq)
@@ -378,12 +384,13 @@ func handleWorkerRequest(c echo.Context, db *gorm.DB, store *storage.Manager, ca
 	return c.Blob(resp.StatusCode, ct, resp.Body)
 }
 
-func buildWorkerEnv(db *gorm.DB, store *storage.Manager, cache *storage.SiteRulesCache, site *models.Site, deployID string, domain string, deps *WorkerDeps) *worker.Env {
+func buildWorkerEnv(db *gorm.DB, store *storage.Manager, cache *storage.SiteRulesCache, site *models.Site, deployID string, domain string, deps *WorkerDeps) (*worker.Env, error) {
 	opts := workeradapter.BuildEnvOptions{DB: db, Store: store, Cache: cache}
 	if deps != nil {
 		opts.MinioClient = deps.MinioClient
 		opts.PublicS3URL = deps.PublicS3URL
 		opts.D1DataDir = deps.D1DataDir
+		opts.Environment = deps.Environment
 	}
 	return workeradapter.BuildEnvFromDB(opts, site.ID, &workeradapter.StaticAssetsFetcher{
 		Store:     store,
