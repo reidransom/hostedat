@@ -2,6 +2,7 @@ package environment
 
 import (
 	"errors"
+
 	"github.com/cryguy/hostedat/internal/envschema"
 	"github.com/cryguy/hostedat/internal/models"
 	"gorm.io/gorm"
@@ -22,45 +23,11 @@ type Write struct {
 // Set requires an explicit value. Omitted classification preserves existing
 // classification, and an existing secret can never be downgraded implicitly.
 func (s *Service) Set(siteID string, w Write) (models.WorkerEnvVar, error) {
-	if w.Value == nil || len(*w.Value) > MaxValueBytes || envschema.ValidateName(w.Name) != nil {
-		return models.WorkerEnvVar{}, ErrInput
+	rows, err := s.Bulk(siteID, []Write{w}, nil)
+	if err != nil {
+		return models.WorkerEnvVar{}, err
 	}
-	var row models.WorkerEnvVar
-	err := models.WithSiteTransaction(s.DB, siteID, func(tx *gorm.DB, _ *models.Site) error {
-		var err error
-		row, err = models.FindWorkerEnvVar(tx, siteID, w.Name)
-		create := errors.Is(err, gorm.ErrRecordNotFound)
-		if err != nil && !create {
-			return ErrStorage
-		}
-		if create {
-			row = models.WorkerEnvVar{SiteID: siteID, Name: w.Name}
-		}
-		if w.Secret != nil {
-			row.Secret = *w.Secret
-		}
-		row.Value = *w.Value
-		row.SecretVersion = 0
-		row.SecretKeyID = ""
-		row.SecretNonce = nil
-		row.Ciphertext = nil
-		if row.Secret {
-			row.SecretKeyID, row.SecretNonce, row.Ciphertext, err = s.Keys.encrypt(siteID, w.Name, *w.Value)
-			if err != nil {
-				return err
-			}
-			row.Value = ""
-			row.SecretVersion = FormatVersion
-		}
-		if create {
-			return tx.Create(&row).Error
-		}
-		return tx.Save(&row).Error
-	})
-	if err != nil && !errors.Is(err, ErrInput) {
-		return models.WorkerEnvVar{}, ErrStorage
-	}
-	return row, err
+	return rows[0], nil
 }
 
 // List projects metadata and public values only, without reading ciphertext.
@@ -74,14 +41,21 @@ func (s *Service) List(siteID string) ([]models.WorkerEnvVar, error) {
 }
 func (s *Service) Delete(siteID, id string) (models.WorkerEnvVar, error) {
 	var row models.WorkerEnvVar
-	err := models.WithSiteTransaction(s.DB, siteID, func(tx *gorm.DB, _ *models.Site) error {
+	err := models.WithSiteTransaction(s.DB, siteID, func(tx *gorm.DB, site *models.Site) error {
 		if err := tx.Select("id", "site_id", "name", "secret").First(&row, "id = ? AND site_id = ?", id, siteID).Error; err != nil {
 			return err
+		}
+		schema, err := ActiveSchema(tx, site)
+		if err != nil {
+			return err
+		}
+		if rule, declared := schema[row.Name]; declared && rule.Required {
+			return &envschema.Diagnostic{Name: row.Name, Constraint: "required secret cannot be deleted"}
 		}
 		return tx.Delete(&row).Error
 	})
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		err = ErrStorage
+		err = safeError(err)
 	}
 	return row, err
 }

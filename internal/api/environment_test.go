@@ -40,6 +40,9 @@ func TestServingEncryptedEnvironmentFailsClosed(t *testing.T) {
 	if err := env.db.Create(&site).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := env.db.Create(&models.Deployment{ID: deploy, SiteID: site.ID, Version: version, FileHash: "test"}).Error; err != nil {
+		t.Fatal(err)
+	}
 	env.deployWorkerSite(t, site.ID, deploy, "encrypted", `export default { fetch(request, env) { return new Response(typeof env.TOKEN === "string" && env.TOKEN === request.headers.get("x-expected") ? "binding-ok" : "binding-bad"); } }`)
 	base := "/api/v1/sites/" + site.ID + "/worker/env"
 	put := func(body string, intended int) {

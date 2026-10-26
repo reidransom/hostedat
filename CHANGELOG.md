@@ -4,6 +4,15 @@
 
 ### Changed
 
+- Add authenticated per-site atomic environment bulk merge and read-only remote
+  declaration validation. Entire bounded batches commit or roll back together,
+  preserve omitted bindings/IDs, and return metadata only. Candidate declarations
+  constrain supplied secrets without activation; single/bulk writes and deletion
+  enforce established running snapshots. Remote checks authenticate/decrypt stored
+  secrets and reject plain classification. Invalid/storage rollback, isolation,
+  value-free responses/audits/logs and actual QuickJS updates were exercised.
+  Deployment snapshot activation remains a later cutover.
+
 - Environment management write/list responses now use explicit public DTOs:
   secret values and server-side mask placeholders are omitted, while empty
   plaintext values remain present. Environment handlers disable response
@@ -26,7 +35,7 @@
   invalid environments without reporting a run, and dispatchers propagate errors.
   Disposable legacy migration, rotation/rollback, restart and actual QuickJS
   requests prove decrypted strings, next-invocation updates and in-flight snapshots.
-  Declaration enforcement and the native secret CLI are not yet enabled.
+  Deployment/invocation declaration enforcement and native secret CLI remain pending.
 
 ### Internal
 
@@ -39,8 +48,8 @@
   offline-maintenance helper installs uniqueness only after resolution.
   Focused race-enabled tests and two real server processes verify concurrent
   same-name upserts, lock serialization and activation rollback, with actual
-  QuickJS invocation before/after rollback. Declaration enforcement is not yet
-  enabled.
+  QuickJS invocation before/after rollback. Mutation enforcement now honors stored
+  running declarations; deployment activation enforcement remains pending.
 - Add the shared `internal/envschema` JSON/YAML secret-declaration parser,
   deterministic canonical JSON, strict rule/name checks, and value-free
   validation diagnostics. Focused race-enabled tests and a disposable consumer

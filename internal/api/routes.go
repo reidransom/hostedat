@@ -86,6 +86,8 @@ func RegisterRoutes(e *echo.Echo, db *gorm.DB, cfg *config.Config, store *storag
 	envMiddlewares = append(envMiddlewares, AuthMiddleware(db, cfg.JWTSecret), versionCheck)
 	envRoutes := e.Group("/api/v1/sites/:id/worker/env", envMiddlewares...)
 	envRoutes.POST("", workerHandler.SetEnvVar)
+	envRoutes.POST("/bulk", workerHandler.BulkEnvVars)
+	envRoutes.POST("/validate", workerHandler.ValidateEnvVars)
 	envRoutes.GET("", workerHandler.ListEnvVars)
 	envRoutes.DELETE("/:varId", workerHandler.DeleteEnvVar)
 	sites.POST("/:id/worker/kv", workerHandler.CreateKVNamespace)

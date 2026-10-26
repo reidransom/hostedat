@@ -1,6 +1,6 @@
 # Native secrets and environment: sequential implementation tasks
 
-Status: reviewed task breakdown; tasks 01–05 implemented and verified. Tasks 06–15 have not started. Execute in numbered order. The detailed contract and acceptance matrix in `native-secrets-env-plan.md` remain authoritative; this file changes sequencing, not scope.
+Status: reviewed task breakdown; tasks 01–06 implemented and verified. Tasks 07–15 have not started. Execute in numbered order. The detailed contract and acceptance matrix in `native-secrets-env-plan.md` remain authoritative; this file changes sequencing, not scope.
 
 ## Review decisions
 
@@ -62,11 +62,12 @@ For each task: inspect current code and existing test patterns; inspect referenc
 
 ### 06 — Atomic bulk writes and remote validation
 
-- [ ] Add bounded bulk and declaration-validation routes under existing authenticated per-site worker/env routes, using the shared service and transaction protocol.
+- [x] Add bounded bulk and declaration-validation routes under existing authenticated per-site worker/env routes, using the shared service and transaction protocol.
 - Validate entire batches, reject duplicate/empty/oversized batches and omitted values; candidate schemas validate but never activate. Schema-backed supplied entries must be declared secrets. Merge only: preserve omitted/unrelated names.
 - Enforce active declaration constraints for single/bulk writes and deletion; forbid required-name deletion/downgrade and updates invalidating the running deployment. Preserve undeclared legacy plaintext bindings.
 - Add metadata-only no-store responses and post-commit best-effort audits containing names/counts/actions only. Safe API errors cannot contain parser/request/SQL values.
 - Proof: actual HTTP bulk success and invalid/storage-failure rollback, local candidate versus active-schema constraints, remote validation of decrypted values/classification, omitted fields, and cross-user/wrong-site denial for every operation.
+- Evidence: `.scratch/native-secrets-task06-verification.md`; focused race-enabled tests and actual production-server HTTP/QuickJS smoke prove atomic merge and invalid/storage rollback, candidate-versus-active constraints, decrypted remote validation, metadata-only results/audits, best-effort auditing and all-operation isolation. Deployment declaration activation remains task 09.
 
 ### 07 — Binding collisions in both directions
 

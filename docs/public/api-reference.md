@@ -447,8 +447,14 @@ storage; the server requires operator key configuration and offline migration.
 - `value` (string, required): Explicit value, at most 1 MiB. Omission/null fails;
   an explicit empty string is distinct and remains supported.
 - `secret` (bool, optional): Encrypt when true. Omission preserves an existing
-  binding's classification (new bindings default to plain). Only explicit false
-  can downgrade an undeclared secret; declared requirements are a later cutover.
+  binding's classification (new bindings default to plain). Explicit false can
+  downgrade only undeclared secrets. Every supplied name declared by a candidate
+  or running schema must remain a secret.
+- `schema` (object, optional): Flat JSON declaration, using the shared declaration
+  rules. Validates the supplied name/value without activating or persisting the
+  candidate. Other candidate-required names need not be supplied for this merge.
+  The active deployment's declaration still constrains the resulting environment;
+  a candidate cannot weaken the running application's requirements.
 
 **Response:** `200 OK`
 ```json
@@ -468,6 +474,81 @@ curl -X POST https://example.com/api/v1/sites/abc123def456/worker/env \
 ```
 
 ---
+### POST /sites/:id/worker/env/bulk
+
+Atomically merge the supplied names. Omitted names and unrelated legacy plain
+bindings remain untouched; existing names retain their IDs. There is no replace,
+prune, or sequential fallback behavior.
+
+**Auth:** JWT or API key (must own site or be admin)
+
+**Request:**
+```json
+{
+  "entries": [
+    {"name": "API_KEY", "value": "secret-value", "secret": true}
+  ],
+  "schema": {
+    "API_KEY": {"type": "string"},
+    "FUTURE_KEY": {"type": "string"}
+  }
+}
+```
+
+`schema` is optional, uses the flat declaration format, and never becomes active.
+When supplied, every entry must be declared and classified as a secret. Only
+supplied entries are checked against this candidate; omitted `FUTURE_KEY` above
+does not prevent a merge. The complete resulting environment must satisfy the
+running deployment's declaration, including presence, secret classification,
+nonempty required values, and type constraints.
+
+Limits shared by the service and API: 1–256 entries, at most 1 MiB per value,
+4 MiB aggregate unescaped names plus values, 1 MiB per declaration, and 8 MiB
+encoded request body (including JSON escaping). Single writes share the value
+and encoded-body bounds. Requests must contain one JSON object with known fields.
+Duplicate names, omitted/null values, invalid names, malformed declarations,
+classification/type failures, or any storage failure abort the complete batch.
+Explicit empty values are subject to declaration rules. Omitted `secret`
+preserves classification, never implicitly downgrades a stored secret.
+
+**Response:** `200 OK`, an array of `{id, site_id, name, secret}` metadata only.
+Bulk responses omit `value` even for plain bindings. All environment responses,
+including authorization and validation errors, use `Cache-Control: no-store`.
+Invalid input/declaration constraints return safe `400` errors; storage or
+decryption failures return generic `500` errors without request/parser/SQL values.
+Success audits are best-effort after commit and contain only names/count/action.
+
+---
+
+### POST /sites/:id/worker/env/validate
+
+Read-only remote validation of stored secret values against a candidate. No
+binding writes, audit mutation, declaration activation, or local values are
+accepted. Required names must exist, and every present declared name (including
+optional ones) must be a secret with a valid decrypted string value. Plain
+bindings cannot satisfy secret declarations.
+
+**Auth:** JWT or API key (must own site or be admin)
+
+**Request:**
+```json
+{"schema":{"API_KEY":{"type":"string"}}}
+```
+
+The `schema` field is required; `{}` is an explicit empty declaration, while
+omission/null is invalid. Unknown fields, including submitted `values`, fail.
+Declaration/body bounds match bulk. Validation uses one database read snapshot.
+
+**Response:** `200 OK`:
+```json
+{"valid":true,"names":["API_KEY"]}
+```
+
+Failure returns a safe `400` naming the first unsatisfied variable/constraint,
+or a generic `500` for storage/decryption errors. No stored values are returned.
+
+---
+
 
 ### GET /sites/:id/worker/env
 
@@ -496,7 +577,9 @@ or plain classification and never fills the form with a hidden value.
 
 ### DELETE /sites/:id/worker/env/:varId
 
-Delete an environment variable.
+Delete an environment variable, scoped to both site and variable ID. A required
+name in the active deployment's declaration cannot be deleted (`400`); optional
+names may be deleted. Deletion reads metadata only, without decrypting values.
 
 **Auth:** JWT or API key (must own site or be admin)
 

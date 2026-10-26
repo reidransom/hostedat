@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -68,21 +69,26 @@ func (h *WorkerHandler) SetEnvVar(c echo.Context) error {
 		return errorJSON(c, http.StatusForbidden, "access denied")
 	}
 
-	var req environment.Write
-	if err := c.Bind(&req); err != nil {
-		return errorJSON(c, http.StatusBadRequest, "invalid request")
+	var req struct {
+		environment.Write
+		Schema json.RawMessage `json:"schema"`
+	}
+	if err := decodeEnvRequest(c, &req); err != nil {
+		return errorJSON(c, http.StatusBadRequest, "invalid or oversized environment request")
 	}
 
 	if req.Name == "" || req.Value == nil {
 		return errorJSON(c, http.StatusBadRequest, "name and value are required")
 	}
-	envVar, err := h.environments().Set(siteID, req)
-	if errors.Is(err, environment.ErrInput) {
-		return errorJSON(c, http.StatusBadRequest, "invalid environment input")
-	}
+	schema, err := candidateSchema(req.Schema, false)
 	if err != nil {
-		return errorJSON(c, http.StatusInternalServerError, "failed to set env var")
+		return envOperationError(c, err)
 	}
+	rows, err := h.environments().Bulk(siteID, []environment.Write{req.Write}, schema)
+	if err != nil {
+		return envOperationError(c, err)
+	}
+	envVar := rows[0]
 
 	audit.Record(h.DB, c, "worker.env.set", "site", siteID, audit.Ptr(req.Name))
 
@@ -134,7 +140,7 @@ func (h *WorkerHandler) DeleteEnvVar(c echo.Context) error {
 		return errorJSON(c, http.StatusNotFound, "env var not found")
 	}
 	if err != nil {
-		return errorJSON(c, http.StatusInternalServerError, "failed to delete env var")
+		return envOperationError(c, err)
 	}
 
 	audit.Record(h.DB, c, "worker.env.delete", "site", siteID, audit.Ptr(envVar.Name))
