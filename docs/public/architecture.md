@@ -171,6 +171,11 @@ Static serving features:
 - `_headers` file: custom response headers per path pattern
 - Custom `404.html` if present
 - SPA mode: all 404s fall back to `index.html`
+- Shared `internal/artifactpolicy` blocks dotenv path components and reserved
+  environment metadata case-insensitively before worker/static dispatch and at
+  resolved-file lookup, including rewrite targets and physical symlink aliases
+  in old deployments. Blocked requests do not become SPA responses; ordinary
+  missing paths retain SPA behavior. `env.ASSETS.fetch` uses the same policy.
 
 ### API Traffic
 
@@ -326,11 +331,21 @@ The `RequireSiteOwner(db)` middleware is available but handlers perform inline c
 1. **Upload**: Client POSTs a zip as `multipart/form-data` with field `file`
 2. **Validate**: File size checked against `storage.MaxZipSize`; hash computed (SHA-256)
 3. **Pre-generate ID**: A new nanoid `deployID` is generated before any DB writes
-4. **Extract**: Zip extracted to `{storagePath}/{siteID}/{deployID}/`
+4. **Preflight and extract**: Validate every original ZIP path before wrapper
+   flattening, then validate normalized destinations, duplicates and file/directory
+   conflicts before writing. Reject dotenv components case-insensitively,
+   traversal/NUL/absolute/drive/UNC/backslash paths, symlinks, unsupported types
+   and archive bounds. Parse only artifact-root `_hostedat.env.json` with
+   `envschema`; `ExtractZip` returns `(*string, error)` containing canonical
+   metadata separately and never writes it as an asset. Extract other files to
+   `{storagePath}/{siteID}/{deployID}/`; cleanup runs on extraction failure.
 5. **Worker detection**: If `_worker.js` present:
    - Size checked against `MaxScriptSizeKB` (default 1024 KB)
    - Validated and cached via `Engine.CompileAndCache()`
-6. **DB transaction**: `Deployment` record created, `Site.active_version` and `Site.active_deploy_id` updated atomically
+6. **DB transaction**: `Deployment` record (including nullable canonical
+   `EnvDeclaration`) created, `Site.active_version` and `Site.active_deploy_id`
+   updated atomically. Requirement validation/enforcement during activation and
+   rollback is a pending cutover, not implied by metadata parsing.
 7. **Pool invalidation**: Old worker pool for the previous deploy is invalidated
 
 **Rollback** works by updating `Site.active_version` and `Site.active_deploy_id` to point at a previous deployment. The source for that deployment is already on disk.

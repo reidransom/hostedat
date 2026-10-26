@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/cryguy/hostedat/internal/artifactpolicy"
 	"github.com/cryguy/hostedat/internal/storage"
 	"github.com/cryguy/worker/v2"
 )
@@ -42,6 +43,9 @@ func (f *StaticAssetsFetcher) Fetch(req *worker.WorkerRequest) (*worker.WorkerRe
 	reqPath := u.Path
 	if reqPath == "" {
 		reqPath = "/"
+	}
+	if !artifactpolicy.PublicPathAllowed(reqPath) {
+		return &worker.WorkerResponse{StatusCode: 404, Headers: map[string]string{}, Body: []byte("Not Found")}, nil
 	}
 
 	// Collect matching custom headers.
@@ -86,6 +90,9 @@ func (f *StaticAssetsFetcher) Fetch(req *worker.WorkerRequest) (*worker.WorkerRe
 	if rules != nil {
 		rewriteRules := filterRewrites(rules.Redirects)
 		if _, target, ok := storage.MatchRedirect(rewriteRules, reqPath); ok {
+			if !artifactpolicy.PublicPathAllowed(target) {
+				return &worker.WorkerResponse{StatusCode: 404, Headers: respHeaders, Body: []byte("Not Found")}, nil
+			}
 			if filePath, found := f.Store.ResolveFile(deployPath, target); found {
 				body, err := os.ReadFile(filePath)
 				if err != nil {
@@ -121,8 +128,8 @@ func (f *StaticAssetsFetcher) Fetch(req *worker.WorkerRequest) (*worker.WorkerRe
 	}
 
 	// Custom 404.html.
-	notFoundPath := filepath.Join(deployPath, "404.html")
-	if info, err := os.Stat(notFoundPath); err == nil && !info.IsDir() {
+	notFoundPath, found := f.Store.ResolveFile(deployPath, "/404.html")
+	if found {
 		body, err := os.ReadFile(notFoundPath)
 		if err == nil {
 			respHeaders["content-type"] = "text/html; charset=utf-8"

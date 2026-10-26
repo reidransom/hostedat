@@ -12,6 +12,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/cryguy/hostedat/internal/analytics"
+	"github.com/cryguy/hostedat/internal/artifactpolicy"
 	"github.com/cryguy/hostedat/internal/environment"
 	"github.com/cryguy/hostedat/internal/models"
 	"github.com/cryguy/hostedat/internal/storage"
@@ -197,7 +198,7 @@ func staticSiteHandler(db *gorm.DB, store *storage.Manager, cache *storage.SiteR
 
 		// Block access to internal files (_worker.js, _headers, _redirects, etc.)
 		reqPath := c.Request().URL.Path
-		if internalFiles[reqPath] {
+		if internalFiles[reqPath] || !artifactpolicy.PublicPathAllowed(reqPath) {
 			c.Set("serve_type", "404")
 			return errorJSON(c, http.StatusNotFound, "not found")
 		}
@@ -247,6 +248,10 @@ func staticSiteHandler(db *gorm.DB, store *storage.Manager, cache *storage.SiteR
 		if rules != nil {
 			if rule, target, matched := storage.MatchRedirect(rules.Redirects, reqPath); matched {
 				if rule.StatusCode == 200 {
+					if !artifactpolicy.PublicPathAllowed(target) {
+						c.Set("serve_type", "404")
+						return errorJSON(c, http.StatusNotFound, "not found")
+					}
 					if filePath, found := store.ResolveFile(deployPath, target); found {
 						c.Set("serve_type", "rewrite")
 						return serveFile(c, filePath)

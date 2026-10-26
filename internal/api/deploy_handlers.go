@@ -83,7 +83,8 @@ func (h *DeployHandler) Deploy(c echo.Context) error {
 	if _, err := tmpFile.Seek(0, io.SeekStart); err != nil {
 		return errorJSON(c, http.StatusInternalServerError, "failed to process uploaded file")
 	}
-	if err := h.Storage.ExtractZip(siteID, deployID, tmpFile, written); err != nil {
+	declaration, err := h.Storage.ExtractZip(siteID, deployID, tmpFile, written)
+	if err != nil {
 		log.Printf("deploy: failed to extract zip for site %s: %v", siteID, err)
 		return errorJSON(c, http.StatusBadRequest, "invalid zip file")
 	}
@@ -136,11 +137,12 @@ func (h *DeployHandler) Deploy(c echo.Context) error {
 		oldDeployID = freshSite.ActiveDeployID
 
 		deployment = models.Deployment{
-			ID:        deployID,
-			SiteID:    siteID,
-			Version:   nextVersion,
-			FileHash:  fileHash,
-			HasWorker: hasWorker,
+			ID:             deployID,
+			SiteID:         siteID,
+			Version:        nextVersion,
+			FileHash:       fileHash,
+			HasWorker:      hasWorker,
+			EnvDeclaration: declaration,
 		}
 		if err := tx.Create(&deployment).Error; err != nil {
 			return fmt.Errorf("create deployment: %w", err)

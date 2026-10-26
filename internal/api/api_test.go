@@ -1024,7 +1024,7 @@ func TestAdmin_Invites(t *testing.T) {
 func deploySite(t *testing.T, env *testEnv, siteID string, deployKey string, files map[string]string) {
 	t.Helper()
 	zipBuf := createTestZip(t, files)
-	if err := env.store.ExtractZip(siteID, deployKey, bytes.NewReader(zipBuf.Bytes()), int64(zipBuf.Len())); err != nil {
+	if _, err := env.store.ExtractZip(siteID, deployKey, bytes.NewReader(zipBuf.Bytes()), int64(zipBuf.Len())); err != nil {
 		t.Fatalf("ExtractZip: %v", err)
 	}
 }

@@ -227,6 +227,15 @@ Site deleted.
 
 Deploy a local directory to a site as a new version. The CLI zips the directory and uploads it via a multipart POST to the server. Each successful deploy increments the version number.
 
+Packaging always excludes symlinks and dotenv files/directories named `.env`
+or `.env.*` in any case, including `.ENV` and nested `.EnV.production/`.
+This intentionally tightens the previous case-sensitive exclusion on Linux;
+version-control/cache exclusions remain in place. Ordinary packaging rejects
+reserved `_hostedat.env.json` components rather than uploading them as content.
+Schema-aware declaration packaging is not yet available in the CLI.
+Filename exclusions cannot detect secrets renamed or embedded in bundles;
+deploy never reads dotenv values or builds the application.
+
 If `--spa` is passed and the site does not already have SPA mode enabled, the CLI enables it after the upload completes.
 
 If `--spa` is not passed and SPA mode is not already enabled, the CLI performs a heuristic check to detect single-page apps:

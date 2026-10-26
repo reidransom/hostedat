@@ -5,8 +5,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
+
+	"github.com/cryguy/hostedat/internal/artifactpolicy"
+	"github.com/cryguy/hostedat/internal/envschema"
 )
 
 const (
@@ -24,87 +28,154 @@ func NewManager(basePath string) *Manager {
 	return &Manager{BasePath: basePath}
 }
 
-func (m *Manager) ExtractZip(siteID string, deployKey string, reader io.ReaderAt, size int64) (extractErr error) {
+// ExtractZip preflights the entire archive before creating deployment files.
+// It returns canonical declaration metadata separately; it is never extracted
+// into the public asset directory. nil distinguishes legacy uploads from {}.
+func (m *Manager) ExtractZip(siteID string, deployKey string, reader io.ReaderAt, size int64) (declaration *string, extractErr error) {
 	if size > MaxZipSize {
-		return fmt.Errorf("zip file too large (max %d bytes)", MaxZipSize)
+		return nil, fmt.Errorf("zip file too large (max %d bytes)", MaxZipSize)
 	}
-
 	zr, err := zip.NewReader(reader, size)
 	if err != nil {
-		return fmt.Errorf("reading zip: %w", err)
+		return nil, fmt.Errorf("reading zip: %w", err)
+	}
+	if len(zr.File) > maxFileCount {
+		return nil, fmt.Errorf("zip contains too many files (max %d)", maxFileCount)
 	}
 
-	if len(zr.File) > maxFileCount {
-		return fmt.Errorf("zip contains too many files (max %d)", maxFileCount)
+	// Validate original components before stripping any supported wrapper.
+	for _, f := range zr.File {
+		if err := validateArchivePath(f.Name); err != nil {
+			return nil, err
+		}
+		mode := f.Mode()
+		if !mode.IsDir() && !mode.IsRegular() {
+			return nil, fmt.Errorf("zip contains unsupported file type")
+		}
+		if f.UncompressedSize64 > maxFileSize {
+			return nil, fmt.Errorf("zip file exceeds maximum size")
+		}
+	}
+	prefix := detectSingleTopDir(zr.File)
+	names := make([]string, len(zr.File))
+	destinations := make(map[string]bool, len(zr.File))
+	var headerTotal uint64
+	var metadataBytes uint64
+	for i, f := range zr.File {
+		name := strings.TrimPrefix(f.Name, prefix)
+		if name == "" {
+			continue // explicit wrapper directory
+		}
+		if err := validateArchivePath(name); err != nil {
+			return nil, err
+		}
+		name = path.Clean(name)
+		if name == "." {
+			return nil, fmt.Errorf("zip contains invalid destination")
+		}
+		if _, exists := destinations[name]; exists {
+			return nil, fmt.Errorf("zip contains duplicate destination")
+		}
+		destinations[name] = f.Mode().IsDir()
+		names[i] = name
+		headerTotal += f.UncompressedSize64
+		if headerTotal > maxTotalUncompressed {
+			return nil, fmt.Errorf("zip total uncompressed size exceeds limit")
+		}
+		for _, component := range strings.Split(name, "/") {
+			if artifactpolicy.IsMetadataComponent(component) && (name != artifactpolicy.EnvManifest || f.Mode().IsDir()) {
+				return nil, fmt.Errorf("environment metadata must be an artifact-root file with its canonical name")
+			}
+		}
+	}
+	// File/directory conflicts are invalid even without explicit dir entries.
+	for name := range destinations {
+		for parent := path.Dir(name); parent != "."; parent = path.Dir(parent) {
+			if isDir, exists := destinations[parent]; exists && !isDir {
+				return nil, fmt.Errorf("zip contains conflicting destinations")
+			}
+		}
+	}
+	for i, f := range zr.File {
+		if names[i] != artifactpolicy.EnvManifest {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return nil, fmt.Errorf("cannot open environment metadata")
+		}
+		limited := &io.LimitedReader{R: rc, N: envschema.MaxDocumentBytes + 1}
+		schema, parseErr := envschema.Parse(limited, envschema.JSON)
+		metadataBytes = uint64(envschema.MaxDocumentBytes + 1 - limited.N)
+		closeErr := rc.Close()
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		if closeErr != nil {
+			return nil, fmt.Errorf("cannot read environment metadata")
+		}
+		canonical, err := schema.CanonicalJSON()
+		if err != nil {
+			return nil, err
+		}
+		value := string(canonical)
+		declaration = &value
 	}
 
 	destDir := m.GetDeploymentPath(siteID, deployKey)
 	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return fmt.Errorf("creating deployment dir: %w", err)
+		return nil, fmt.Errorf("creating deployment dir: %w", err)
 	}
-
-	// Clean up partially extracted files on any error.
 	defer func() {
 		if extractErr != nil {
 			_ = os.RemoveAll(destDir)
 		}
 	}()
-
-	// Detect single top-level directory to flatten
-	prefix := detectSingleTopDir(zr.File)
-
-	var totalUncompressed uint64
-
-	for _, f := range zr.File {
-		name := f.Name
-		if prefix != "" {
-			name = strings.TrimPrefix(name, prefix)
-			if name == "" {
-				continue
-			}
+	totalUncompressed := metadataBytes
+	for i, f := range zr.File {
+		name := names[i]
+		if name == "" || name == artifactpolicy.EnvManifest {
+			continue
 		}
-
-		// Zip-slip protection
 		destPath := filepath.Join(destDir, filepath.FromSlash(name))
-		if !strings.HasPrefix(filepath.Clean(destPath), filepath.Clean(destDir)+string(os.PathSeparator)) && filepath.Clean(destPath) != filepath.Clean(destDir) {
-			return fmt.Errorf("zip slip detected: %s", name)
-		}
-
-		mode := f.FileInfo().Mode()
-		if mode&os.ModeSymlink != 0 {
-			return fmt.Errorf("zip contains symlink: %s", name)
-		}
-		if !mode.IsDir() && !mode.IsRegular() {
-			return fmt.Errorf("zip contains unsupported file type: %s", name)
-		}
-
-		if mode.IsDir() {
+		if f.Mode().IsDir() {
 			if err := os.MkdirAll(destPath, 0755); err != nil {
-				return fmt.Errorf("creating dir %s: %w", name, err)
+				return nil, fmt.Errorf("creating deployment directory: %w", err)
 			}
 			continue
 		}
-
-		// Early reject based on header (untrusted, but avoids wasted work)
-		if f.UncompressedSize64 > maxFileSize {
-			return fmt.Errorf("file too large: %s (%d bytes)", name, f.UncompressedSize64)
-		}
-
 		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
-			return fmt.Errorf("creating parent dir for %s: %w", name, err)
+			return nil, fmt.Errorf("creating deployment parent: %w", err)
 		}
-
-		// Track actual bytes written (not header-reported) for aggregate limit
 		written, err := extractFile(f, destPath)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		totalUncompressed += uint64(written)
 		if totalUncompressed > maxTotalUncompressed {
-			return fmt.Errorf("zip total uncompressed size exceeds limit (%d bytes)", maxTotalUncompressed)
+			return nil, fmt.Errorf("zip total uncompressed size exceeds limit")
 		}
 	}
+	return declaration, nil
+}
 
+func validateArchivePath(name string) error {
+	if name == "" || strings.HasPrefix(name, "/") || strings.ContainsAny(name, "\\\x00") ||
+		(len(name) >= 2 && name[1] == ':') {
+		return fmt.Errorf("zip contains invalid path")
+	}
+	components := strings.Split(name, "/")
+	for i, component := range components {
+		if artifactpolicy.IsMetadataComponent(component) &&
+			(component != artifactpolicy.EnvManifest || i != len(components)-1) {
+			return fmt.Errorf("zip contains misplaced environment metadata")
+		}
+	}
+	for _, component := range strings.Split(name, "/") {
+		if component == ".." || artifactpolicy.IsDotenvComponent(component) {
+			return fmt.Errorf("zip contains forbidden path component")
+		}
+	}
 	return nil
 }
 
@@ -117,6 +188,9 @@ func detectSingleTopDir(files []*zip.File) string {
 	hasDirEntry := false
 	for _, f := range files {
 		parts := strings.SplitN(f.Name, "/", 2)
+		if len(parts) == 1 && !f.Mode().IsDir() {
+			return ""
+		}
 		if topDir == "" {
 			topDir = parts[0]
 		} else if parts[0] != topDir {
@@ -176,6 +250,9 @@ func (m *Manager) DeleteSite(siteID string) error {
 // ResolveFile tries to find a file at the given request path.
 // It checks: exact path, path/index.html, path.html
 func (m *Manager) ResolveFile(deploymentPath, requestPath string) (string, bool) {
+	if !artifactpolicy.PublicPathAllowed(requestPath) {
+		return "", false
+	}
 	// Clean and normalize the path
 	requestPath = strings.TrimPrefix(requestPath, "/")
 	if requestPath == "" {
@@ -198,22 +275,30 @@ func (m *Manager) ResolveFile(deploymentPath, requestPath string) (string, bool)
 		return "", false
 	}
 
-	if isFile(fullPath) {
-		return fullPath, true
+	for _, candidate := range []string{fullPath, filepath.Join(fullPath, "index.html"), fullPath + ".html"} {
+		if !isFile(candidate) {
+			continue
+		}
+		// Old deployments may contain symlinks or forbidden artifacts. Check
+		// the physical destination too, never just the incoming URL spelling.
+		resolved, err := filepath.EvalSymlinks(candidate)
+		if err != nil {
+			continue
+		}
+		root, err := filepath.EvalSymlinks(absDeployment)
+		if err != nil {
+			return "", false
+		}
+		rel, err := filepath.Rel(root, resolved)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) ||
+			!artifactpolicy.PublicPathAllowed(filepath.ToSlash(rel)) {
+			continue
+		}
+		relativeCandidate, err := filepath.Rel(deploymentPath, candidate)
+		if err == nil && artifactpolicy.PublicPathAllowed(filepath.ToSlash(relativeCandidate)) {
+			return candidate, true
+		}
 	}
-
-	// Try path/index.html
-	indexPath := filepath.Join(fullPath, "index.html")
-	if isFile(indexPath) {
-		return indexPath, true
-	}
-
-	// Try path.html
-	htmlPath := fullPath + ".html"
-	if isFile(htmlPath) {
-		return htmlPath, true
-	}
-
 	return "", false
 }
 

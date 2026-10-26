@@ -24,6 +24,20 @@
 
 ### Security
 
+- Preflight original and wrapper-flattened ZIP paths before writes; reject
+  dotenv components case-insensitively, traversal/absolute/drive/UNC/NUL/backslash
+  paths, duplicate normalized destinations, file/directory conflicts and unsafe
+  types, retaining size bounds and partial-extraction cleanup. Parse canonical
+  artifact-root `_hostedat.env.json` separately into internal deployment metadata,
+  never public assets. Static serving and worker ASSETS block reserved metadata
+  and historic dotenv files through normalized paths, rewrites, SPA and physical
+  symlink aliases. CLI exclusions now cover mixed-case dotenv paths and retain
+  all symlink exclusions; ordinary packaging refuses reserved metadata.
+  Focused race-enabled regressions, hostile raw HTTP uploads, real QuickJS ASSETS
+  and built-CLI smoke passed. This is filename policy, not bundle-content scanning;
+  deployment/rollback declaration enforcement and schema-aware CLI packaging
+  remain subsequent cutovers.
+
 - Enforce environment/binding collisions in both directions for KV, D1, object
   storage and Durable Object provisioning under the shared database-backed site
   transaction. Check all declaration names, including absent optional secrets;

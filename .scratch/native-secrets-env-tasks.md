@@ -1,6 +1,6 @@
 # Native secrets and environment: sequential implementation tasks
 
-Status: reviewed task breakdown; tasks 01–07 implemented and verified. Tasks 08–15 have not started. Execute in numbered order. The detailed contract and acceptance matrix in `native-secrets-env-plan.md` remain authoritative; this file changes sequencing, not scope.
+Status: reviewed task breakdown; tasks 01–08 implemented and verified. Tasks 09–15 have not started. Execute in numbered order. The detailed contract and acceptance matrix in `native-secrets-env-plan.md` remain authoritative; this file changes sequencing, not scope.
 
 ## Review decisions
 
@@ -78,11 +78,12 @@ For each task: inspect current code and existing test patterns; inspect referenc
 
 ### 08 — Artifact path and public-serving policy
 
-- [ ] Share case-insensitive dotenv component and reserved-metadata policy between CLI/server/resolved serving.
+- [x] Share case-insensitive dotenv component and reserved-metadata policy between CLI/server/resolved serving.
 - Preflight every original ZIP path and normalized destination after supported wrapper flattening before writes. Reject dotenv wrappers/files, traversal, NUL, absolute/drive/UNC/backslash paths, duplicate normalized destinations, symlinks, unsupported types, and size violations; retain cleanup.
 - Accept only artifact-root `_hostedat.env.json` after flattening; parse canonical declarations and remove metadata from public assets. Reject misplaced/conflicting metadata rather than treating it as content.
 - Block reserved metadata and historic dotenv assets through resolved static routes, rewrites, normalized aliases, SPA/custom-domain paths, and env.ASSETS.fetch. Policy is filename-based, not detection of secrets embedded in bundles.
 - Proof: real raw-API ZIP uploads with wrappers, duplicate/path attacks and failure cleanup; actual static and worker-ASSETS requests cannot fetch blocked content. Legacy safe archives still deploy.
+- Evidence: `.scratch/native-secrets-task08-verification.md`; focused race-enabled archive/client/static/adapter regressions, actual production HTTP rejection of 28 hostile/oversized raw uploads with failure cleanup, real QuickJS ASSETS and built-CLI smoke prove private canonical metadata, blocked historic artifacts/aliases/rewrites, preserved SPA behavior and safe legacy uploads.
 
 ### 09 — Deployment, rollback, and invocation enforcement
 

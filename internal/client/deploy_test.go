@@ -384,3 +384,48 @@ func TestZipDirectory_FileContent(t *testing.T) {
 	}
 	t.Error("test.txt not found in zip")
 }
+
+func TestZipDirectory_PortableArtifactPolicy(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{".ENV", ".EnV.production", "nested/.ENV.local/private.txt", "safe.txt"} {
+		full := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(full), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte("artifact-marker"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink("safe.txt", filepath.Join(dir, "alias.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("safe.txt", filepath.Join(dir, "_hostedat.env.json")); err != nil {
+		t.Fatal(err)
+	}
+	data, err := zipDirectory(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil || len(zr.File) != 1 || zr.File[0].Name != "safe.txt" {
+		t.Fatal("dotenv or symlink was packaged")
+	}
+	if err := os.Remove(filepath.Join(dir, "_hostedat.env.json")); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"_hostedat.env.json", "_HOSTEDAT.ENV.JSON", "nested/_hostedat.env.json"} {
+		full := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(full), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte("{}"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := zipDirectory(dir); err == nil {
+			t.Fatal("reserved metadata packaged as ordinary content")
+		}
+		if err := os.Remove(full); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

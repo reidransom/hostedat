@@ -972,6 +972,16 @@ const url = env.IMAGES.publicUrl("photo.jpg");
 
 Always available. Serves static files through the full site serving pipeline (respects `_redirects`, `_headers`, 404 handling, SPA mode).
 
+Dotenv components (`.env`, `.env.*`) and reserved `_hostedat.env.json` metadata
+are blocked case-insensitively, including historic files left by older uploads.
+The same resolved-file policy covers direct requests, normalized aliases,
+rewrite targets, SPA fallback and `env.ASSETS.fetch`; a rewrite or SPA mode does
+not authorize returning a blocked artifact. Physical symlink destinations are
+also checked before serving old deployments. New archives reject symlinks.
+Canonical declaration metadata is parsed separately and never extracted to the
+public asset tree. These are filename checks, not secret-content scanning, and
+cannot stop authorized worker code from returning a secret it has received.
+
 ```js
 export default {
   async fetch(request, env, ctx) {

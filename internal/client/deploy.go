@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/cryguy/hostedat/internal/artifactpolicy"
 )
 
 type Deployment struct {
@@ -59,20 +61,17 @@ func (c *Client) Deploy(siteID, dirPath string) (*Deployment, error) {
 // deployments. These patterns protect against accidentally shipping secrets,
 // build caches, and version-control internals.
 var defaultExcludes = map[string]bool{
-	".git":            true,
-	".env":            true,
-	".env.local":      true,
-	".env.production": true,
-	".DS_Store":       true,
-	"node_modules":    true,
-	".svn":            true,
-	".hg":             true,
-	"__pycache__":     true,
-	".terraform":      true,
+	".git":         true,
+	".DS_Store":    true,
+	"node_modules": true,
+	".svn":         true,
+	".hg":          true,
+	"__pycache__":  true,
+	".terraform":   true,
 }
 
 func isExcluded(name string) bool {
-	return defaultExcludes[name] || strings.HasPrefix(name, ".env.")
+	return defaultExcludes[name] || artifactpolicy.IsDotenvComponent(name)
 }
 
 func zipDirectory(dirPath string) ([]byte, error) {
@@ -108,6 +107,9 @@ func zipDirectory(dirPath string) ([]byte, error) {
 		// Skip symlinks
 		if info.Mode()&os.ModeSymlink != 0 {
 			return nil
+		}
+		if artifactpolicy.IsMetadataComponent(info.Name()) {
+			return fmt.Errorf("reserved environment metadata requires schema-aware packaging")
 		}
 
 		if info.IsDir() {

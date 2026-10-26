@@ -344,6 +344,24 @@ If `_worker.js` is present in the zip, it is validated and cached for V8 executi
 **Request:** `multipart/form-data`
 - `file` (file, required): Zip archive containing site files
 
+Archives are preflighted before deployment files are written. A single common
+wrapper directory (for example `dist/`) is flattened. Original and flattened
+paths must both be safe: dotenv components (`.env` and `.env.*`, case-insensitive),
+traversal, NUL, absolute/drive/UNC paths, backslashes, duplicate normalized
+destinations, file/directory conflicts, symlinks and unsupported types are rejected.
+Limits are 25 MiB compressed, 25 MiB per file, 256 MiB total uncompressed and
+20,000 entries. Failed extraction removes its partial deployment directory.
+
+The only supported environment metadata is artifact-root `_hostedat.env.json`
+after flattening. It must be a valid flat JSON declaration (maximum 1 MiB);
+case aliases, nested/conflicting manifests and metadata directories are rejected.
+The server stores canonical declaration JSON internally and does not extract the
+manifest as a public asset. Deployment/rollback requirement enforcement is a
+separate pending cutover; accepting metadata alone does not validate stored secrets.
+Historic dotenv files and reserved metadata cannot be fetched through static
+serving, rewrites, SPA fallback or worker `env.ASSETS.fetch`. This is a filename
+policy, not a scanner for secrets renamed or embedded in JavaScript bundles.
+
 **Response:** `201 Created`
 ```json
 {
