@@ -80,6 +80,73 @@ binding collisions must be checked separately by later consumers within their
 coordinated transaction. Secret classification is also the consuming service's
 responsibility; a map of strings alone cannot prove encrypted/secret storage.
 
+#### Local schema and dotenv inputs
+
+`Discover(invocationDir, explicitSchema)` creates a command-scoped `Project`.
+It checks only `env.json` and `env.yml` in the invocation directory, never
+parents or a deployment output directory. Both defaults require explicit
+selection. An explicit path is relative to the invocation directory (absolute
+paths also work), must exist, and must have the lowercase `.json` or `.yml`
+extension; `.yaml` and executable formats are not supported. The selected
+regular file is parsed once. No selection produces a nil schema, distinct from
+an explicit empty mapping. Absolute paths and parsed rules remain stable if
+the working directory or source declaration changes later.
+
+The root `.env` is beside the selected schema, or in the invocation directory
+when there is no schema. A symlinked schema keeps its named directory as the
+project root rather than borrowing `.env` from its target. Discovery never
+reads dotenv values. `Project.LocalValues(os.LookupEnv)` requires a schema,
+reads only the associated `.env` (absence is allowed), and overlays explicitly
+present **declared** shell variables, including empty strings. Nil lookup
+disables shell overlay. It returns values for `Schema.Validate`; it does not
+modify the process environment, write files, start an application, execute
+shell code, or use the network.
+
+`ParseDotenv(io.Reader)` accepts at most `MaxDotenvBytes` (1 MiB) across the
+whole document, including multiline values and comments. Reads stop at the
+limit plus one byte. It requires UTF-8 without NUL and uses the maintained
+[`github.com/joho/godotenv`](https://github.com/joho/godotenv) parser (v1.5.1)
+behind a strict assignment/duplicate boundary:
+
+- Assignments use `NAME=value`, optionally prefixed with `export` and space/tab.
+  Names use the shared grammar. Space/tab around names and `=` is allowed.
+  YAML-style `NAME: value`, bare names, and text after a closing quote other
+  than space/tab or a comment are rejected.
+- LF and CRLF are accepted; CRLF normalizes to LF, including inside multiline
+  quoted values. Bare CR is rejected. Single and double quotes may span
+  physical lines. A quote immediately after a backslash is treated as escaped,
+  matching the pinned parser, even after an even-length backslash run.
+- A full-line `#` starts a comment. In unquoted values, the first `#` at value
+  start or after space/tab starts a comment; other `#` characters are literal.
+  Quoted `#` characters are always literal.
+- Unquoted surrounding whitespace is trimmed using the parser's space, tab,
+  vertical-tab, form-feed, NEL, and nonbreaking-space set; internal whitespace
+  is retained. Quotes preserve surrounding and internal whitespace. Empty
+  assignments and empty quotes produce an explicitly present empty string.
+- Single quotes preserve backslashes literally. Double quotes decode `\n` and
+  `\r`; other backslash escapes remove the backslash (for example, `\t` becomes
+  `t`, `\"` becomes `"`, and `\\` becomes `\`). These are dotenv parser
+  semantics, not shell or JSON escape rules.
+- Dollar references (`$NAME`, `${NAME}`, `$(...)`) and backticks are always
+  literal: no variable, command, or shell expansion occurs. The wrapper shields
+  dollars from the parser's built-in interpolation using a forbidden-input
+  NUL sentinel and restores them afterward; it never calls a load/overload or
+  command-execution API.
+- Duplicate names, including `export` aliases and empty first assignments, fail
+  before parser overwrite. Assignment-looking text inside multiline quotes is
+  part of the value, not a new assignment. Errors contain only fixed constraints
+  and validated names, never input lines, values, paths, or raw reader errors.
+
+`Project.ReadSyncSource(path)` requires a named regular file, relative to the
+invocation directory unless absolute, and never applies shell overrides. It
+rejects the project's local `.env` by cleaned path and opened-file identity,
+covering file/directory symlinks and hard links as well as the target of a
+symlinked `.env`. Neither the source nor its path is written or saved.
+Callers must separately validate supplied schema values and binding collisions
+before a remote mutation; these helpers do not implement sync, API requests,
+CLI commands, deployment enforcement, or database-aware collision checks.
+
+
 
 ---
 

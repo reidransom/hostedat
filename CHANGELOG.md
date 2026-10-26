@@ -10,6 +10,15 @@
   harness exercise equivalent formats, invalid/duplicate/oversized documents,
   required/optional/empty values, exact whitespace, and redaction. This package
   does not yet enable secret commands, encrypted storage, or deployment checks.
+- Add invocation-scoped schema discovery and bounded, read-only dotenv helpers
+  in `internal/envschema`, using maintained `godotenv` parsing with interpolation
+  disabled and duplicate rejection before overwrite. Local shell overlays
+  preserve explicit empty values; named sync inputs reject the project's local
+  `.env`, including symlink and hard-link aliases. Focused race-enabled tests
+  and a disposable consumer in a read-only, network-isolated sandbox exercise
+  discovery conflicts, CRLF/multiline/quote/comment/whitespace behavior, literal
+  substitutions, redacted errors, size limits, and path identity. These helpers
+  are not yet CLI commands or a remote secret-sync implementation.
 
 
 ## v2.0.0 — V8 Worker Runtime Migration

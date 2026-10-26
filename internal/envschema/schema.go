@@ -1,5 +1,6 @@
 // Package envschema parses secret declarations and validates string bindings.
-// It does not access files, the environment, the network, or a database.
+// Its local input helpers read explicitly scoped files without writes, process
+// environment mutation, shell execution, network access, or database access.
 package envschema
 
 import (
