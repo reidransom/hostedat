@@ -390,7 +390,7 @@ func handleWorkerRequest(c echo.Context, db *gorm.DB, store *storage.Manager, ca
 }
 
 func buildWorkerEnv(db *gorm.DB, store *storage.Manager, cache *storage.SiteRulesCache, site *models.Site, deployID string, domain string, deps *WorkerDeps) (*worker.Env, error) {
-	opts := workeradapter.BuildEnvOptions{DB: db, Store: store, Cache: cache}
+	opts := workeradapter.BuildEnvOptions{DB: db, Store: store, Cache: cache, DeploymentID: deployID}
 	if deps != nil {
 		opts.MinioClient = deps.MinioClient
 		opts.PublicS3URL = deps.PublicS3URL

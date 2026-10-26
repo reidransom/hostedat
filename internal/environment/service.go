@@ -2,6 +2,7 @@ package environment
 
 import (
 	"errors"
+	"sync"
 
 	"github.com/cryguy/hostedat/internal/envschema"
 	"github.com/cryguy/hostedat/internal/models"
@@ -11,8 +12,10 @@ import (
 const MaxValueBytes = 1 << 20
 
 type Service struct {
-	DB   *gorm.DB
-	Keys *Keys
+	DB       *gorm.DB
+	Keys     *Keys
+	schemaMu sync.Mutex
+	schemas  map[string]declarationSnapshot
 }
 type Write struct {
 	Name   string  `json:"name"`
@@ -75,15 +78,54 @@ func (s *Service) value(row models.WorkerEnvVar) (string, error) {
 
 // Load creates a fresh invocation snapshot. No cache or plaintext-secret fallback.
 func (s *Service) Load(siteID string) (map[string]string, map[string]string, error) {
+	return s.LoadForDeployment(siteID, "")
+}
+
+// LoadForDeployment validates the exact artifact selected by the invocation.
+// An empty deployment ID selects the active snapshot in the same read transaction.
+func (s *Service) LoadForDeployment(siteID, deploymentID string) (map[string]string, map[string]string, error) {
+	return s.LoadForDeploymentFrom(s.DB, siteID, deploymentID)
+}
+
+// LoadForDeploymentFrom shares the caller's read snapshot with binding loading.
+func (s *Service) LoadForDeploymentFrom(db *gorm.DB, siteID, deploymentID string) (map[string]string, map[string]string, error) {
 	var rows []models.WorkerEnvVar
-	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+	var schema envschema.Schema
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		var site models.Site
+		if err := tx.First(&site, "id = ?", siteID).Error; err != nil {
+			return ErrStorage
+		}
+		selected := deploymentID
+		if selected == "" && site.ActiveDeployID != nil {
+			selected = *site.ActiveDeployID
+		}
+		if selected != "" {
+			var dep models.Deployment
+			if err := tx.First(&dep, "id = ? AND site_id = ?", selected, siteID).Error; err != nil {
+				// Unenforced legacy callers may build bindings before an artifact exists.
+				if !errors.Is(err, gorm.ErrRecordNotFound) || site.EnvDeclarationsEnforced {
+					return ErrStorage
+				}
+			} else {
+				var err error
+				schema, err = s.Declaration(&dep)
+				if err != nil {
+					return err
+				}
+			}
+		}
+		if site.EnvDeclarationsEnforced && schema == nil {
+			return ErrStorage
+		}
 		if err := tx.Where("site_id = ?", siteID).Find(&rows).Error; err != nil {
 			return ErrStorage
 		}
-		names := make([]string, 0, len(rows))
+		names := make([]string, 0, len(rows)+len(schema))
 		for _, row := range rows {
 			names = append(names, row.Name)
 		}
+		names = append(names, schema.Names()...)
 		return CheckEnvironmentNames(tx, siteID, names)
 	}); err != nil {
 		return nil, nil, safeError(err)
@@ -104,6 +146,14 @@ func (s *Service) Load(siteID string) (map[string]string, map[string]string, err
 		} else {
 			vars[row.Name] = value
 		}
+	}
+	for name := range schema {
+		if _, plain := vars[name]; plain {
+			return nil, nil, &envschema.Diagnostic{Name: name, Constraint: "must be a secret"}
+		}
+	}
+	if err := schema.Validate(secrets); err != nil {
+		return nil, nil, err
 	}
 	return vars, secrets, nil
 }

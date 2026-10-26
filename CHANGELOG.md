@@ -11,7 +11,7 @@
   enforce established running snapshots. Remote checks authenticate/decrypt stored
   secrets and reject plain classification. Invalid/storage rollback, isolation,
   value-free responses/audits/logs and actual QuickJS updates were exercised.
-  Deployment snapshot activation remains a later cutover.
+  Deployment activation now establishes the running snapshot as described below.
 
 - Environment management write/list responses now use explicit public DTOs:
   secret values and server-side mask placeholders are omitted, while empty
@@ -24,6 +24,18 @@
 
 ### Security
 
+- Enforce canonical declarations before compilation and again under the shared
+  database-backed activation lock, validating required presence, decrypted types,
+  secret classification and binding collisions. The first manifest activation
+  makes later manifests mandatory; explicit empty schemas can remove requirements
+  without re-enabling schema-less deploys. Rollback validates current secrets,
+  never restores old values, and rejects schema-less targets on enforced sites.
+  Failed activation preserves the running deployment and removes staged assets,
+  bytecode and compiled pools. HTTP/cron validate the exact invocation snapshot
+  with fresh string bindings and fail closed. Focused race regressions, separate-
+  connection mutation interleavings, actual QuickJS fetch/cron, production raw
+  HTTP and headless dashboard uploads were exercised.
+
 - Preflight original and wrapper-flattened ZIP paths before writes; reject
   dotenv components case-insensitively, traversal/absolute/drive/UNC/NUL/backslash
   paths, duplicate normalized destinations, file/directory conflicts and unsafe
@@ -35,8 +47,7 @@
   all symlink exclusions; ordinary packaging refuses reserved metadata.
   Focused race-enabled regressions, hostile raw HTTP uploads, real QuickJS ASSETS
   and built-CLI smoke passed. This is filename policy, not bundle-content scanning;
-  deployment/rollback declaration enforcement and schema-aware CLI packaging
-  remain subsequent cutovers.
+  schema-aware CLI packaging remains a subsequent cutover.
 
 - Enforce environment/binding collisions in both directions for KV, D1, object
   storage and Durable Object provisioning under the shared database-backed site
@@ -59,7 +70,7 @@
   invalid environments without reporting a run, and dispatchers propagate errors.
   Disposable legacy migration, rotation/rollback, restart and actual QuickJS
   requests prove decrypted strings, next-invocation updates and in-flight snapshots.
-  Deployment/invocation declaration enforcement and native secret CLI remain pending.
+  Native secret CLI integration remains pending.
 
 ### Internal
 
@@ -72,8 +83,8 @@
   offline-maintenance helper installs uniqueness only after resolution.
   Focused race-enabled tests and two real server processes verify concurrent
   same-name upserts, lock serialization and activation rollback, with actual
-  QuickJS invocation before/after rollback. Mutation enforcement now honors stored
-  running declarations; deployment activation enforcement remains pending.
+  QuickJS invocation before/after rollback. Deployment activation and mutations
+  now enforce stored running declarations.
 - Add the shared `internal/envschema` JSON/YAML secret-declaration parser,
   deterministic canonical JSON, strict rule/name checks, and value-free
   validation diagnostics. Focused race-enabled tests and a disposable consumer

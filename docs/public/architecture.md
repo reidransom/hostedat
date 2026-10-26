@@ -30,8 +30,9 @@ web/
 
 ### Shared secret declarations
 
-`internal/envschema` provides a database-free declaration parser and validator;
-it is not yet connected to CLI commands, API writes, or deployment enforcement.
+`internal/envschema` provides a database-free declaration parser and validator,
+shared by environment mutations, deployment/rollback and invocation loading.
+Native CLI command integration remains pending.
 All declarations describe server-side secrets, including names starting with
 `VITE_`; the package never infers public/browser configuration.
 
@@ -262,11 +263,23 @@ Lock acquisition can fail after the busy timeout; it must not continue with
 uncoordinated writes. Deployment versions are allocated under the same lock,
 and rollback reloads current activation state after acquiring it.
 
-The declaration columns preserve future enforcement state without enabling it:
 `env_declaration IS NULL` means absent, while canonical `"{}"` means an explicit
-empty declaration. The site flag defaults to false. These internal fields are
-not serialized by the management API. Manifest loading and enforcement are not
-yet enabled.
+empty declaration. The site's default-off enforcement flag becomes true on its
+first successful manifest-bearing activation; later schema-less deploys and
+rollbacks are rejected. Empty declarations may remove requirements without
+disabling enforcement. Internal fields are not serialized by the management API.
+Activation validates current decrypted values, classification, required presence
+and namespace collisions both before compilation and inside the site transaction.
+Rollback validates its target against current values, never historical secrets.
+Failed activation retires staged assets/bytecode and compiled pools.
+
+`environment.Service.Declaration` retains only the latest loaded immutable
+snapshot per site and never caches values. Invocation loading validates the
+exact deployment selected for execution, with fresh decrypted values and binding
+metadata from one read transaction. Binding adapters retain the live database
+handle, not the closed snapshot transaction. Cron and dispatcher factories take
+both site and deployment IDs to avoid validating a different active artifact
+during concurrent deployment changes.
 
 Startup refuses duplicate environment `(site_id, name)` rows. A name lookup
 also refuses ambiguity rather than selecting a first/last row. To resolve legacy

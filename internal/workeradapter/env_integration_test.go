@@ -20,6 +20,8 @@ func setupFullEnvTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("opening test db: %v", err)
 	}
 	if err := db.AutoMigrate(
+		&models.Site{},
+		&models.Deployment{},
 		&models.WorkerEnvVar{},
 		&models.KVNamespace{},
 		&models.D1Database{},
@@ -27,6 +29,11 @@ func setupFullEnvTestDB(t *testing.T) *gorm.DB {
 		&models.StorageBucket{},
 	); err != nil {
 		t.Fatalf("migrating: %v", err)
+	}
+	for _, id := range []string{"site_full", "site_degrade", "site_disp", "siteA", "siteB", "site_multi", "site_kvtype", "site_dotype"} {
+		if err := db.Create(&models.Site{ID: id, UserID: "user", Name: id, SubdomainSlug: id}).Error; err != nil {
+			t.Fatal(err)
+		}
 	}
 	return db
 }

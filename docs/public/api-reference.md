@@ -356,8 +356,17 @@ The only supported environment metadata is artifact-root `_hostedat.env.json`
 after flattening. It must be a valid flat JSON declaration (maximum 1 MiB);
 case aliases, nested/conflicting manifests and metadata directories are rejected.
 The server stores canonical declaration JSON internally and does not extract the
-manifest as a public asset. Deployment/rollback requirement enforcement is a
-separate pending cutover; accepting metadata alone does not validate stored secrets.
+manifest as a public asset. Before compilation and again inside the coordinated
+activation transaction, declared names must be collision-free and every present
+declared binding must be a secret with a valid decrypted value; required names
+must exist and be nonempty. Safe `400` diagnostics identify names/constraints,
+never values. Failure leaves the previous deployment active and removes staged
+assets, bytecode and compiled pools.
+
+The first successful manifest-bearing activation opts the site into enforcement.
+Every later deploy must include a manifest, including static-only deployments.
+An explicit `{}` may remove requirements but does not disable enforcement.
+Legacy sites that have never opted in still accept schema-less uploads.
 Historic dotenv files and reserved metadata cannot be fetched through static
 serving, rewrites, SPA fallback or worker `env.ASSETS.fetch`. This is a filename
 policy, not a scanner for secrets renamed or embedded in JavaScript bundles.
@@ -418,6 +427,12 @@ curl "https://example.com/api/v1/sites/abc123def456/deployments?page=2" \
 ### POST /sites/:id/deployments/:version/rollback
 
 Roll back the site's active deployment to a previous version.
+
+The target's stored declaration is checked against **current** secret values
+inside the same site transaction as activation. Rollback never restores old
+values. Missing/invalid/plain declared bindings reject activation with safe `400`
+diagnostics, leaving the current deployment unchanged. Enforced sites cannot
+roll back to a schema-less artifact; an explicit empty declaration remains valid.
 
 **Auth:** JWT or API key (must own site or be admin)
 

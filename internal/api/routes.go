@@ -33,7 +33,7 @@ func RegisterRoutes(e *echo.Echo, db *gorm.DB, cfg *config.Config, store *storag
 
 	authHandler := &AuthHandler{DB: db, JWTSecret: cfg.JWTSecret}
 	siteHandler := &SiteHandler{DB: db, Storage: store, S3Client: s3Client, IAMClient: iamClient, DataDir: cfg.Worker.DataDir}
-	deployHandler := &DeployHandler{DB: db, Storage: store, MaxScriptSizeKB: cfg.Worker.MaxScriptSizeKB}
+	deployHandler := &DeployHandler{DB: db, Storage: store, MaxScriptSizeKB: cfg.Worker.MaxScriptSizeKB, Environment: envService}
 	if workerEngine != nil {
 		deployHandler.WorkerEngine = workerEngine
 	}

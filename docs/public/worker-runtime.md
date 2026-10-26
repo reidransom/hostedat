@@ -28,10 +28,16 @@ Secret bindings are decrypted only while constructing a fresh invocation
 environment and remain JavaScript strings. The next invocation sees an update
 without redeploying; an in-flight request or WebSocket keeps its existing snapshot.
 HTTP fails with a generic configuration error without executing the worker if
-storage/decryption fails. Cron skips invalid environments without marking the
-schedule as run. There is no plaintext-secret fallback. Ordinary plain bindings
-remain supported. At-rest encryption cannot prevent worker code from returning
-or logging a secret, and does not guarantee memory zeroization.
+storage/decryption or the selected deployment's declaration validation fails.
+Cron skips invalid environments without marking the schedule as run. Required
+names must exist as valid secrets; optional names may be absent, not invalid or
+plain. Binding names cannot collide with platform or site namespace bindings.
+The declaration is parsed once per loaded snapshot, not read from disk for each
+request; values and all binding metadata are loaded in one database read snapshot.
+HTTP, cron and dispatcher factories receive the exact selected deployment ID.
+There is no plaintext-secret fallback. Ordinary undeclared plain bindings remain
+supported. At-rest encryption cannot prevent worker code from returning or
+logging a secret, and does not guarantee memory zeroization.
 
 ---
 

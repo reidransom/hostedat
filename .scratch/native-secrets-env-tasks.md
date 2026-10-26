@@ -1,6 +1,6 @@
 # Native secrets and environment: sequential implementation tasks
 
-Status: reviewed task breakdown; tasks 01–08 implemented and verified. Tasks 09–15 have not started. Execute in numbered order. The detailed contract and acceptance matrix in `native-secrets-env-plan.md` remain authoritative; this file changes sequencing, not scope.
+Status: reviewed task breakdown; tasks 01–09 implemented and verified. Tasks 10–15 have not started. Execute in numbered order. The detailed contract and acceptance matrix in `native-secrets-env-plan.md` remain authoritative; this file changes sequencing, not scope.
 
 ## Review decisions
 
@@ -87,11 +87,12 @@ For each task: inspect current code and existing test patterns; inspect referenc
 
 ### 09 — Deployment, rollback, and invocation enforcement
 
-- [ ] Persist canonical snapshots; validate secret presence, classification, decrypted types, and collisions before activation and again inside coordinated activation transaction.
+- [x] Persist canonical snapshots; validate secret presence, classification, decrypted types, and collisions before activation and again inside coordinated activation transaction.
 - First manifest activation sets enforcement flag; later schema-less deploys fail. Explicit empty schemas may remove requirements. Legacy unenforced schema-less sites remain supported.
 - Validate rollback target against current values without restoring old values; reject schema-less rollback on enforced sites. Validate loaded invocation environment against the active snapshot, parsed once per loaded snapshot rather than disk per request.
 - Ensure failed activation leaves previous deployment active and cleans staged assets/compiled artifacts.
 - Proof: actual missing/invalid-secret failed and successful deploys and worker fetch; direct API/dashboard uploads, rollback with changed secrets, legacy compatibility, and separate-connection deploy-versus-delete/update races. HTTP and cron fail closed on invalid required bindings.
+- Evidence: `.scratch/native-secrets-task09-verification.md`; focused race-enabled validation/activation regressions, separate-connection mutation interleavings, real QuickJS HTTP/cron and actual production raw-API/headless-dashboard ZIP uploads prove enforcement, rollback against current values, legacy compatibility, fail-closed invocation and staged/compiled cleanup.
 
 ### 10 — Dashboard provisioning before first deployment
 

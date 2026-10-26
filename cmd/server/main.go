@@ -208,15 +208,16 @@ func main() {
 	rulesCache := storage.NewSiteRulesCache()
 
 	// Build env factory for cron and service bindings.
-	envFactory := func(siteID string) (*worker.Env, error) {
+	envFactory := func(siteID, deployID string) (*worker.Env, error) {
 		return workeradapter.BuildEnvFromDB(workeradapter.BuildEnvOptions{
-			DB:          db,
-			Environment: envService,
-			MinioClient: s3Client,
-			PublicS3URL: "https://" + cfg.ObjectStorage.DomainName,
-			D1DataDir:   cfg.Worker.DataDir,
-			Store:       store,
-			Cache:       rulesCache,
+			DB:           db,
+			Environment:  envService,
+			DeploymentID: deployID,
+			MinioClient:  s3Client,
+			PublicS3URL:  "https://" + cfg.ObjectStorage.DomainName,
+			D1DataDir:    cfg.Worker.DataDir,
+			Store:        store,
+			Cache:        rulesCache,
 		}, siteID, nil)
 	}
 

@@ -12,19 +12,32 @@ import (
 
 // BuildEnvOptions holds the dependencies needed to build a worker Env from the database.
 type BuildEnvOptions struct {
-	DB          *gorm.DB
-	Environment *environment.Service
-	MinioClient *minio.Client
-	PublicS3URL string
-	D1DataDir   string
-	Dispatcher  worker.WorkerDispatcher
-	Store       *storage.Manager
-	Cache       *storage.SiteRulesCache
+	DB           *gorm.DB
+	Environment  *environment.Service
+	DeploymentID string
+	MinioClient  *minio.Client
+	PublicS3URL  string
+	D1DataDir    string
+	Dispatcher   worker.WorkerDispatcher
+	Store        *storage.Manager
+	Cache        *storage.SiteRulesCache
 }
 
 // BuildEnvFromDB loads environment variables, secrets, and all bindings
 // for a site from the database, returning a worker.Env ready for execution.
 func BuildEnvFromDB(opts BuildEnvOptions, siteID string, assets worker.AssetsFetcher) (*worker.Env, error) {
+	var env *worker.Env
+	db := opts.DB
+	err := db.Transaction(func(tx *gorm.DB) error {
+		opts.DB = tx
+		var err error
+		env, err = buildEnvSnapshot(opts, db, siteID, assets)
+		return err
+	})
+	return env, err
+}
+
+func buildEnvSnapshot(opts BuildEnvOptions, bindingDB *gorm.DB, siteID string, assets worker.AssetsFetcher) (*worker.Env, error) {
 	env := &worker.Env{
 		Assets: assets,
 		SiteID: siteID,
@@ -38,7 +51,7 @@ func BuildEnvFromDB(opts BuildEnvOptions, siteID string, assets worker.AssetsFet
 	}
 
 	// Cache API binding — site-scoped, always available.
-	env.Cache = &GORMCacheStore{DB: opts.DB, SiteID: siteID}
+	env.Cache = &GORMCacheStore{DB: bindingDB, SiteID: siteID}
 
 	// Load environment variables and secrets.
 	service := opts.Environment
@@ -46,7 +59,7 @@ func BuildEnvFromDB(opts BuildEnvOptions, siteID string, assets worker.AssetsFet
 		service = &environment.Service{DB: opts.DB}
 	}
 	var err error
-	env.Vars, env.Secrets, err = service.Load(siteID)
+	env.Vars, env.Secrets, err = service.LoadForDeploymentFrom(opts.DB, siteID, opts.DeploymentID)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +72,7 @@ func BuildEnvFromDB(opts BuildEnvOptions, siteID string, assets worker.AssetsFet
 	if len(kvNamespaces) > 0 {
 		env.KV = make(map[string]worker.KVStore, len(kvNamespaces))
 		for _, ns := range kvNamespaces {
-			env.KV[ns.Name] = &GORMKVStore{DB: opts.DB, NamespaceID: ns.ID}
+			env.KV[ns.Name] = &GORMKVStore{DB: bindingDB, NamespaceID: ns.ID}
 		}
 	}
 
@@ -99,7 +112,7 @@ func BuildEnvFromDB(opts BuildEnvOptions, siteID string, assets worker.AssetsFet
 	if len(doNamespaces) > 0 {
 		env.DurableObjects = make(map[string]worker.DurableObjectStore, len(doNamespaces))
 		for _, ns := range doNamespaces {
-			env.DurableObjects[ns.Name] = &GORMDurableObjectStore{DB: opts.DB}
+			env.DurableObjects[ns.Name] = &GORMDurableObjectStore{DB: bindingDB}
 		}
 	}
 
@@ -109,7 +122,7 @@ func BuildEnvFromDB(opts BuildEnvOptions, siteID string, assets worker.AssetsFet
 // PlatformDispatcher implements worker.WorkerDispatcher by delegating to an Engine.
 type PlatformDispatcher struct {
 	Engine     *worker.Engine
-	EnvFactory func(siteID string) (*worker.Env, error)
+	EnvFactory func(siteID, deployID string) (*worker.Env, error)
 }
 
 // Compile-time interface check.
@@ -122,7 +135,7 @@ func (pd *PlatformDispatcher) Execute(siteID, deployKey string, env *worker.Env,
 			return &worker.WorkerResult{Error: errors.New("worker environment configuration failed")}
 		}
 		var err error
-		env, err = pd.EnvFactory(siteID)
+		env, err = pd.EnvFactory(siteID, deployKey)
 		if err != nil || env == nil {
 			return &worker.WorkerResult{Error: errors.New("worker environment configuration failed")}
 		}
