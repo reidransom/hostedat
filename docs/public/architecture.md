@@ -28,6 +28,59 @@ web/
   dist/             Build output (embedded into binary)
 ```
 
+### Shared secret declarations
+
+`internal/envschema` provides a database-free declaration parser and validator;
+it is not yet connected to CLI commands, API writes, or deployment enforcement.
+All declarations describe server-side secrets, including names starting with
+`VITE_`; the package never infers public/browser configuration.
+
+`Parse(io.Reader, JSON|YAML)` accepts one flat mapping of variable names to rules.
+Input and canonical metadata are limited to 1 MiB. Names use the case-sensitive
+ASCII grammar `[A-Za-z_][A-Za-z0-9_]*`. Duplicate names/fields, unknown fields,
+grouped/versioned documents, non-string keys, coercion, aliases/anchors, custom
+tags, multiple documents, and unsupported types are rejected. YAML uses the
+maintained `go.yaml.in/yaml/v3` parser. The normalized `Schema` contains `Rule`
+entries with explicit `Required` booleans (defaulting to true when parsed).
+`Schema.CanonicalJSON()` emits compact, sorted-key JSON with explicit required
+flags. `{}` is an explicit empty declaration; callers must track an absent
+manifest separately.
+
+Rules require a `type`: `string`, `number`, `boolean`, `url`, `email`, `json`, or
+`enum`. Only enums accept `values`, a nonempty list of distinct exact strings.
+There are no defaults, binding values, or client/server sections in declarations.
+Validation leaves worker binding values as strings, without trimming or coercion:
+
+- Required values must be present and nonempty. Optional permits absence, not
+  invalid supplied values. Optional strings may be empty; optional enums may
+  accept empty only if it is an explicit choice.
+- Strings retain all whitespace; even whitespace-only strings are nonempty.
+- Numbers use JSON numeric syntax and must fit a finite float64. Surrounding
+  whitespace, quoted numbers, hexadecimal, NaN, and infinity are rejected.
+- Booleans accept exactly lowercase `true` and `false`, with no whitespace.
+  The declaration's `required` field likewise accepts only literal `true` or
+  `false`, not quoted strings, YAML `yes`/`no`, or capitalized variants.
+- URLs must be absolute with a nonempty host, opaque component, or path, with no
+  ASCII space/tab/CR/LF. HTTPS, `mailto:`, and `file:///` forms are supported;
+  this constraint is not a transport-security or reachability check.
+- Email uses Go's mailbox parser but requires an exact address without a display
+  name or ASCII space/tab/CR/LF.
+- JSON accepts any single JSON value, including scalars and null. JSON syntax
+  whitespace is permitted; enum choices match exact strings including whitespace.
+- Source declarations, enum choices, and binding values must be valid UTF-8.
+
+`Schema.Validate(map[string]string)` checks all declared names while ignoring
+unrelated bindings. Map presence distinguishes absent from explicitly empty.
+`Schema.ValidateValue(name, value, present)` checks one declared name without
+requiring other entries, for merge-only consumers. `Schema.Check()` validates
+programmatically constructed declarations. Diagnostics contain only validated
+names and fixed constraints, never input values or raw parser/reader errors.
+`ValidateName` checks syntax only: runtime-reserved names and database-backed
+binding collisions must be checked separately by later consumers within their
+coordinated transaction. Secret classification is also the consuming service's
+responsibility; a map of strings alone cannot prove encrypted/secret storage.
+
+
 ---
 
 ## Request Routing

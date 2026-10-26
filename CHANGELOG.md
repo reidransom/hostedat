@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Internal
+
+- Add the shared `internal/envschema` JSON/YAML secret-declaration parser,
+  deterministic canonical JSON, strict rule/name checks, and value-free
+  validation diagnostics. Focused race-enabled tests and a disposable consumer
+  harness exercise equivalent formats, invalid/duplicate/oversized documents,
+  required/optional/empty values, exact whitespace, and redaction. This package
+  does not yet enable secret commands, encrypted storage, or deployment checks.
+
+
 ## v2.0.0 — V8 Worker Runtime Migration
 
 **Released:** 2026-02-20
