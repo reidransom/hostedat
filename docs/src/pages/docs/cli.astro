@@ -20,6 +20,7 @@ import CodeBlock from '../../components/CodeBlock.astro';
       <tr><td><code>hostedat sites ...</code></td><td>Create, list, and delete sites</td></tr>
       <tr><td><code>hostedat deploy ...</code></td><td>Deploy a directory to a site</td></tr>
       <tr><td><code>hostedat secret ...</code></td><td>Put, atomically sync, list metadata, or delete secrets</td></tr>
+      <tr><td><code>hostedat env check</code></td><td>Validate local values or read-only remote secret requirements</td></tr>
       <tr><td><code>hostedat storage ...</code></td><td>Manage worker storage buckets and uploads</td></tr>
       <tr><td><code>hostedat storage-credentials ...</code></td><td>Manage S3-compatible access keys</td></tr>
       <tr><td><code>hostedat version</code></td><td>Print CLI version and default server</td></tr>
@@ -167,6 +168,38 @@ hostedat secret delete my-app TOKEN --yes`} lang="bash" />
     <code>--allow-insecure-loopback</code>. Remote HTTP and redirects are refused.
     These commands never read local dotenv implicitly, build an application or
     reveal/export secrets. Authorized worker code can still disclose its bindings.
+  </p>
+
+  <hr />
+
+  <h2>Environment checks</h2>
+  <CodeBlock code={`hostedat env check
+hostedat env check --schema config/requirements.yml
+hostedat env check --remote --site my-app`} lang="bash" />
+  <p>
+    Both modes require an explicit or discovered declaration. Discovery checks only
+    <code>env.json</code>/<code>env.yml</code> in the invocation directory; use
+    <code>--schema</code> if both exist. Local mode reads the <code>.env</code>
+    next to the selected declaration and overlays explicitly set declared shell
+    variables, including empty strings. A missing dotenv is allowed. No credentials,
+    network, writes, environment mutation, application launch or build are involved.
+  </p>
+  <p>
+    Required defaults to true and rejects missing/empty values. Optional permits
+    absence, not invalid supplied values. Undeclared local values are ignored.
+    Values remain strings: booleans are exactly <code>true</code>/<code>false</code>,
+    numbers use finite JSON syntax, and enum matches preserve whitespace.
+    Diagnostics show names and constraints, never supplied values.
+  </p>
+  <p>
+    Remote mode requires <code>--site</code> and normal credentials. It sends only
+    canonical declarations, never reads local dotenv or declared shell values,
+    and never mutates secrets or activates requirements. Stored plaintext bindings
+    cannot satisfy declarations, including <code>VITE_</code> names. HTTPS,
+    capability negotiation, redirect refusal and the explicit loopback-development
+    exception apply as for secret commands. Remote errors are status-only.
+    <code>--site</code> and <code>--allow-insecure-loopback</code> require
+    <code>--remote</code> to prevent accidentally checking only local values.
   </p>
 
   <hr />

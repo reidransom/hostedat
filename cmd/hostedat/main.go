@@ -49,6 +49,7 @@ func main() {
 	root.AddCommand(storageCmd())
 	root.AddCommand(storageCredentialsCmd())
 	root.AddCommand(secretCmd())
+	root.AddCommand(envCmd())
 	root.AddCommand(versionCmd())
 
 	if err := root.Execute(); err != nil {

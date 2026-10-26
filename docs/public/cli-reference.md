@@ -91,6 +91,7 @@ Commands that accept a `<site>` argument match exact site IDs, exact subdomain s
 | `hostedat secret sync <site> <file>` | Atomically merge a named dotenv source |
 | `hostedat secret list <site>` | List sorted secret metadata only |
 | `hostedat secret delete <site> <name>` | Delete a secret by site-scoped name |
+| `hostedat env check` | Validate local values or read-only remote secret requirements |
 | `hostedat storage list <site>` | List storage buckets for a site |
 | `hostedat storage create <site>` | Create a storage bucket binding |
 | `hostedat storage update <site> <bucket-id>` | Toggle bucket public/private |
@@ -609,6 +610,44 @@ forbidden. Errors from environment operations are status-only, not server respon
 bodies. Success output contains names/counts only. At-rest encryption cannot stop
 an authorized worker from disclosing a secret, and in-flight requests retain their
 existing environment snapshot.
+
+---
+
+### hostedat env check
+
+Validate every name in a declaration without changing values:
+
+```sh
+hostedat env check
+hostedat env check --schema config/requirements.yml
+hostedat env check --remote --site my-app
+```
+
+Both modes require a declaration. Discover `env.json` or `env.yml` only in the
+invocation directory; use `--schema <path>` when both exist or for another filename.
+Only `.json` and `.yml` are supported. Missing explicit files fail; parent
+directories are never searched. An explicit empty `{}` declaration is valid.
+
+**Local (default):** read only `.env` next to the selected declaration (missing is
+allowed), then overlay explicitly set shell variables for declared names, including
+empty strings. Dotenv syntax/limits are described above. No authentication, server
+connection, file writes, environment mutation, application launch or build occurs.
+Undeclared values are ignored. Required defaults to true and rejects absence/empty;
+optional permits absence, not invalid supplied values. All values remain strings:
+numbers must use finite JSON numeric syntax, booleans are exactly `true`/`false`,
+URLs must be absolute, emails must be bare addresses, JSON must be valid and enum
+matches preserve exact whitespace. Diagnostics name constraints, never values.
+
+**Remote:** `--remote --site <ID|name|slug>` reuses normal credentials and ambiguity
+handling. It sends only the canonical declaration to server-side validation; it
+never opens local `.env` or reads declared shell values. The server checks stored
+secret presence, classification, decrypted types and binding collisions. Even
+`VITE_` names denote secrets; plaintext bindings cannot satisfy declarations.
+Validation never writes values or activates requirements. Remote errors are
+status-only and value-free. HTTPS and `secrets-env-v1` are required; explicit
+`--allow-insecure-loopback` permits loopback HTTP development only. `--site` and
+that transport exception are rejected without `--remote` to prevent accidental
+local-only validation of an intended production target.
 
 ---
 

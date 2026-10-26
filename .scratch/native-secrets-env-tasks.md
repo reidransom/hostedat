@@ -1,6 +1,6 @@
 # Native secrets and environment: sequential implementation tasks
 
-Status: reviewed task breakdown; tasks 01–12 implemented and verified. Tasks 13–15 have not started. Execute in numbered order. The detailed contract and acceptance matrix in `native-secrets-env-plan.md` remain authoritative; this file changes sequencing, not scope.
+Status: reviewed task breakdown; tasks 01–13 implemented and verified. Tasks 14–15 have not started. Execute in numbered order. The detailed contract and acceptance matrix in `native-secrets-env-plan.md` remain authoritative; this file changes sequencing, not scope.
 
 ## Review decisions
 
@@ -121,9 +121,10 @@ For each task: inspect current code and existing test patterns; inspect referenc
 
 ### 13 — Local and remote env check
 
-- [ ] Register env check with --schema; local root .env plus explicit shell overrides, no network or application launch/writes.
+- [x] Register env check with --schema; local root .env plus explicit shell overrides, no network or application launch/writes.
 - Remote --site sends canonical declarations only to validation endpoint; never reads local dotenv values/build-shell values for the request. No mutation.
 - Proof: actual CLI local checks with network unavailable; absent/empty/type/optional cases; captured remote request contains no unique local marker and server rejects plaintext bindings for secret declarations.
+- Evidence: `.scratch/native-secrets-task13-verification.md`; focused race-enabled regressions, actual built CLI with socket/connect/send syscalls denied, five captured real-server validation requests and real QuickJS fetches prove local validation/redaction, declaration-only remote requests, plaintext rejection and unchanged stored environment/site/deployment state.
 
 ### 14 — CLI manifest packaging and deploy preflight
 

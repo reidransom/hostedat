@@ -4,6 +4,14 @@
 
 ### Changed
 
+- Add `env check [--schema <path>]` for offline root-dotenv plus explicit shell
+  validation, and `env check --remote --site <site>` for read-only stored-secret
+  checks. Local mode needs no credentials/network and never launches apps or
+  writes files; remote mode sends canonical declarations only, never local
+  dotenv/shell values, and rejects plaintext classification. Focused race-enabled
+  command regressions, built-CLI checks with socket syscalls denied, captured
+  production-server validation requests and real QuickJS fetches were exercised.
+
 - Add native `secret put/sync/list/delete` commands using existing credential/site
   resolution, hidden bounded terminal input and explicit `--stdin` for CI.
   Put/sync support discovered JSON/YAML declarations and `--schema`; atomic sync
