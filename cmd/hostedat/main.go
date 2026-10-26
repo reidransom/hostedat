@@ -197,31 +197,37 @@ func sitesCmd() *cobra.Command {
 }
 
 func deployCmd() *cobra.Command {
-	var spaFlag bool
+	var spaFlag, insecure bool
+	var schema string
 	cmd := &cobra.Command{
 		Use:   "deploy <site> <directory>",
 		Short: "Deploy a directory to a site (by name, subdomain, or ID)",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := args[1]
+			project, err := secretProject(schema)
+			if err != nil {
+				return err
+			}
 
 			c, err := newClient()
 			if err != nil {
 				return err
 			}
+			c.AllowInsecureLoopback = insecure
 
 			site, err := c.ResolveSite(args[0])
 			if err != nil {
 				return err
 			}
 
-			fmt.Printf("Deploying %s to site %s...\n", dir, args[0])
-			deployment, err := c.Deploy(site.ID, dir)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Deploying %s to site %s...\n", dir, args[0])
+			deployment, err := c.Deploy(site.ID, dir, project)
 			if err != nil {
 				return err
 			}
 
-			fmt.Printf("Deployed! Version: v%d\n", deployment.Version)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Deployed! Version: v%d\n", deployment.Version)
 
 			if spaFlag && !site.SPAMode {
 				spaOn := true
@@ -240,6 +246,8 @@ func deployCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&spaFlag, "spa", false, "enable SPA mode for this site")
+	cmd.Flags().StringVar(&schema, "schema", "", "declaration file (.json or .yml), discovered in the invocation directory")
+	cmd.Flags().BoolVar(&insecure, "allow-insecure-loopback", false, "allow manifest preflight/upload over HTTP only to a loopback development server")
 	return cmd
 }
 

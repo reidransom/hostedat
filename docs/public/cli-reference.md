@@ -229,11 +229,39 @@ Deploy a local directory to a site as a new version. The CLI zips the directory 
 Packaging always excludes symlinks and dotenv files/directories named `.env`
 or `.env.*` in any case, including `.ENV` and nested `.EnV.production/`.
 This intentionally tightens the previous case-sensitive exclusion on Linux;
-version-control/cache exclusions remain in place. Ordinary packaging rejects
-reserved `_hostedat.env.json` components rather than uploading them as content.
-Schema-aware declaration packaging is not yet available in the CLI.
+version-control/cache exclusions remain in place. Reserved `_hostedat.env.json`
+components cannot be supplied separately as ordinary content.
 Filename exclusions cannot detect secrets renamed or embedded in bundles;
 deploy never reads dotenv values or builds the application.
+
+Discover `env.json` or `env.yml` only in the invocation directory, even when
+uploading `./dist`. If both exist, select one with `--schema <path>`; explicit
+paths resolve from that directory and must end in `.json` or `.yml`. Missing
+explicit files and unsupported extensions fail. No parent-directory search occurs.
+Without either default or an explicit schema, legacy schema-less packaging is unchanged.
+
+The selected declaration is parsed once and serialized in memory as canonical
+flat JSON at artifact-root `_hostedat.env.json`. Its source file (including
+resolved-path/hard-link aliases) is excluded when it lies inside the upload tree.
+A separately supplied canonical manifest is rejected, even if it contains the
+same declarations. Only declaration rules travel in this metadata; the server
+persists its snapshot and removes it from public assets.
+
+Before a manifest-bearing upload, the client requires `secrets-env-v1` and sends
+only canonical declarations to read-only remote validation. Missing/invalid
+stored secrets stop the upload; fix them with explicit `secret put`/`sync`.
+Preflight never activates requirements or writes values. Server activation
+revalidates transactionally and remains authoritative if values change after
+preflight. HTTP is refused except explicit loopback development opt-in via
+`--allow-insecure-loopback`; redirects are refused. Deploy never loads local
+dotenv/shell values, syncs secrets, launches an application build or injects browser values.
+
+```sh
+# From the project root, use its env.json or env.yml while uploading dist:
+hostedat deploy my-app ./dist
+# Select one format explicitly, including when both defaults exist:
+hostedat deploy my-app ./dist --schema env.yml
+```
 
 If `--spa` is passed and the site does not already have SPA mode enabled, the CLI enables it after the upload completes.
 
@@ -246,7 +274,7 @@ If the heuristic fires, the CLI prints a warning suggesting the user re-deploy w
 
 **Usage:**
 ```
-hostedat deploy <site> <directory> [--spa]
+hostedat deploy <site> <directory> [--spa] [--schema <path>] [--allow-insecure-loopback]
 ```
 
 **Arguments and flags:**
@@ -256,6 +284,8 @@ hostedat deploy <site> <directory> [--spa]
 | `<site>` | yes | string | Site ID, name, or subdomain slug |
 | `<directory>` | yes | string | Path to the directory to deploy (e.g., `./dist`) |
 | `--spa` | no | bool | Enable SPA mode on the site after a successful deploy |
+| `--schema` | no | string | Select a JSON/YAML declaration instead of invocation-directory discovery |
+| `--allow-insecure-loopback` | no | bool | Permit HTTP manifest preflight/upload only to a loopback development server |
 
 **Example (standard deploy):**
 ```bash

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cryguy/hostedat/internal/artifactpolicy"
+	"github.com/cryguy/hostedat/internal/envschema"
 )
 
 type Deployment struct {
@@ -23,35 +24,52 @@ type Deployment struct {
 	UploadedAt time.Time `json:"uploaded_at"`
 }
 
-func (c *Client) Deploy(siteID, dirPath string) (*Deployment, error) {
-	// Zip the directory in memory
-	zipData, err := zipDirectory(dirPath)
+// Deploy packages an already-built directory with the command-scoped declaration.
+// A nil project or schema preserves legacy schema-less packaging.
+func (c *Client) Deploy(siteID, dirPath string, project *envschema.Project) (*Deployment, error) {
+	zipData, err := zipDirectory(dirPath, project)
 	if err != nil {
 		return nil, fmt.Errorf("failed to zip directory: %w", err)
 	}
 	return c.DeployArchive(siteID, zipData)
 }
 
-// DeployArchive uploads an already packaged ZIP. Manifest-bearing archives must
-// negotiate the encrypted declaration contract before any upload is sent.
-// Schema-aware source packaging and read-only preflight belong to the caller.
+// DeployArchive negotiates support and validates remote bindings before uploading
+// a manifest-bearing ZIP. Activation still revalidates transactionally on the server.
 func (c *Client) DeployArchive(siteID string, zipData []byte) (*Deployment, error) {
 	archive, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
 	if err != nil {
 		return nil, fmt.Errorf("invalid deployment ZIP")
 	}
-	hasManifest := false
+	var manifest *zip.File
 	for _, file := range archive.File {
 		for _, component := range strings.Split(strings.ReplaceAll(file.Name, "\\", "/"), "/") {
 			if artifactpolicy.IsMetadataComponent(component) {
-				hasManifest = true
+				if manifest != nil {
+					return nil, fmt.Errorf("conflicting environment metadata in deployment ZIP")
+				}
+				manifest = file
 			}
 		}
 	}
+	hasManifest := manifest != nil
 	uploader := *c
 	if hasManifest {
-		if err := c.RequireSecretsCapability(); err != nil {
+		source, err := manifest.Open()
+		if err != nil {
+			return nil, fmt.Errorf("cannot read deployment environment declaration")
+		}
+		schema, err := envschema.Parse(source, envschema.JSON)
+		_ = source.Close()
+		if err != nil {
 			return nil, err
+		}
+		validation, err := c.ValidateEnvVars(siteID, schema)
+		if err != nil {
+			return nil, fmt.Errorf("deployment environment preflight failed: %w", err)
+		}
+		if !validation.Valid {
+			return nil, fmt.Errorf("deployment environment preflight failed: remote bindings are invalid")
 		}
 		uploader.safeErrors = true
 	}
@@ -106,7 +124,7 @@ func isExcluded(name string) bool {
 	return defaultExcludes[name] || artifactpolicy.IsDotenvComponent(name)
 }
 
-func zipDirectory(dirPath string) ([]byte, error) {
+func zipDirectory(dirPath string, project *envschema.Project) ([]byte, error) {
 	dirPath, err := filepath.Abs(dirPath)
 	if err != nil {
 		return nil, err
@@ -118,6 +136,21 @@ func zipDirectory(dirPath string) ([]byte, error) {
 	}
 	if !info.IsDir() {
 		return nil, fmt.Errorf("not a directory: %s", dirPath)
+	}
+
+	var declaration []byte
+	var sourceInfo os.FileInfo
+	if project != nil && project.Schema != nil {
+		declaration, err = project.Schema.CanonicalJSON()
+		if err != nil {
+			return nil, err
+		}
+		if project.SchemaPath != "" {
+			sourceInfo, err = os.Stat(project.SchemaPath)
+			if err != nil {
+				return nil, fmt.Errorf("cannot inspect selected environment declaration")
+			}
+		}
 	}
 
 	var buf bytes.Buffer
@@ -138,6 +171,11 @@ func zipDirectory(dirPath string) ([]byte, error) {
 
 		// Skip symlinks
 		if info.Mode()&os.ModeSymlink != 0 {
+			return nil
+		}
+		// Exclude the selected source, including resolved-path/hard-link aliases.
+		// Its parsed snapshot is emitted once as canonical private metadata below.
+		if sourceInfo != nil && os.SameFile(info, sourceInfo) {
 			return nil
 		}
 		if artifactpolicy.IsMetadataComponent(info.Name()) {
@@ -171,6 +209,16 @@ func zipDirectory(dirPath string) ([]byte, error) {
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	if declaration != nil {
+		manifest, err := w.Create(artifactpolicy.EnvManifest)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := manifest.Write(declaration); err != nil {
+			return nil, err
+		}
 	}
 
 	if err := w.Close(); err != nil {

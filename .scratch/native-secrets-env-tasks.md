@@ -1,6 +1,6 @@
 # Native secrets and environment: sequential implementation tasks
 
-Status: reviewed task breakdown; tasks 01–13 implemented and verified. Tasks 14–15 have not started. Execute in numbered order. The detailed contract and acceptance matrix in `native-secrets-env-plan.md` remain authoritative; this file changes sequencing, not scope.
+Status: reviewed task breakdown; tasks 01–14 implemented and verified. Task 15 has not started. Execute in numbered order. The detailed contract and acceptance matrix in `native-secrets-env-plan.md` remain authoritative; this file changes sequencing, not scope.
 
 ## Review decisions
 
@@ -128,10 +128,11 @@ For each task: inspect current code and existing test patterns; inspect referenc
 
 ### 14 — CLI manifest packaging and deploy preflight
 
-- [ ] Add deploy --schema; use invocation-directory schema even when deploying dist, canonical JSON in memory, exclude selected source from ordinary packaging, reject separately supplied canonical conflicts.
+- [x] Add deploy --schema; use invocation-directory schema even when deploying dist, canonical JSON in memory, exclude selected source from ordinary packaging, reject separately supplied canonical conflicts.
 - Require capability and read-only remote preflight before manifest-bearing upload; final authority remains server activation transaction. No dotenv read/upload, secret sync, application build, or browser injection.
 - Preserve case-insensitive dotenv/symlink exclusions and unchanged schema-less legacy uploads.
 - Proof: built CLI deploys dist using either JSON/YAML and explicit schema selection; inspect ZIP for canonical declaration only/no values; old-server rejection, missing-secret failure, success and unchanged legacy upload.
+- Evidence: `.scratch/native-secrets-task14-verification.md`; focused race-enabled regressions and actual built-CLI/production-server smoke prove missing-secret/old-server refusal before upload, five byte-inspected JSON/YAML/explicit-selection manifest deploys, selected-source exclusion, canonical persisted snapshots and unchanged legacy uploads with real QuickJS fetches.
 
 ### 15 — Complete release acceptance and documentation
 

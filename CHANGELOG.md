@@ -4,6 +4,16 @@
 
 ### Changed
 
+- Add deploy declaration discovery and `--schema`: JSON/YAML from the invocation
+  directory becomes canonical private ZIP metadata even when uploading `dist`.
+  Exclude the selected source and reject separately supplied canonical conflicts.
+  Manifest uploads require capability negotiation and declaration-only read-only
+  preflight; activation remains the server's transactional decision. Preserve
+  legacy schema-less uploads and case-insensitive dotenv/symlink exclusions;
+  never load local values, sync secrets or build applications. Focused race-enabled
+  regressions, five inspected built-CLI manifest uploads to the production server,
+  old-server/missing-secret refusal and actual QuickJS fetches were exercised.
+
 - Add `env check [--schema <path>]` for offline root-dotenv plus explicit shell
   validation, and `env check --remote --site <site>` for read-only stored-secret
   checks. Local mode needs no credentials/network and never launches apps or
@@ -58,8 +68,8 @@
   development opt-in; refuse redirects in the shared HTTP client and keep secure
   errors body-free. Focused race-enabled client/handler checks and actual
   production-server/QuickJS smoke verified atomic rollback, metadata redaction
-  and next-invocation secret replacement. Native secret commands are integrated
-  above; env checks and schema-aware CLI packaging remain separate integrations.
+  and next-invocation secret replacement. Native secret commands, env checks and
+  schema-aware CLI packaging are integrated above.
 
 - Enforce canonical declarations before compilation and again under the shared
   database-backed activation lock, validating required presence, decrypted types,

@@ -285,15 +285,24 @@ func TestEnvironmentSafeErrors(t *testing.T) {
 
 func TestManifestUploadNegotiation(t *testing.T) {
 	for _, name := range []string{"_hostedat.env.json", "wrapper/_hostedat.env.json", "wrapper/_HOSTEDAT.ENV.JSON"} {
-		uploads, versions := 0, 0
+		uploads, versions, validations := 0, 0, 0
 		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == "/api/v1/version" {
 				versions++
 				capabilityResponse(w)
 				return
 			}
+			if r.URL.Path == "/api/v1/sites/site/worker/env/validate" {
+				validations++
+				body, _ := io.ReadAll(r.Body)
+				if versions != 1 || string(body) != `{"schema":{}}` {
+					t.Error("preflight did not follow capability negotiation with canonical declarations")
+				}
+				_, _ = io.WriteString(w, `{"valid":true}`)
+				return
+			}
 			uploads++
-			if versions != 1 || r.Header.Get("Authorization") != "Bearer token" {
+			if versions != 1 || validations != 1 || r.Header.Get("Authorization") != "Bearer token" {
 				t.Error("upload preceded negotiation or lacked authentication")
 			}
 			_, _ = io.WriteString(w, `{"id":"deploy","version":1}`)

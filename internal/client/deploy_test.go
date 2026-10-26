@@ -44,7 +44,7 @@ func TestClient_Deploy_Success(t *testing.T) {
 	defer srv.Close()
 
 	c := New(srv.URL, "test-token")
-	dep, err := c.Deploy("site123", tmpDir)
+	dep, err := c.Deploy("site123", tmpDir, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestClient_Deploy_NonexistentDirectory(t *testing.T) {
 	defer srv.Close()
 
 	c := New(srv.URL, "test-token")
-	_, err := c.Deploy("site123", "/nonexistent/directory")
+	_, err := c.Deploy("site123", "/nonexistent/directory", nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -89,7 +89,7 @@ func TestClient_Deploy_NotADirectory(t *testing.T) {
 	defer srv.Close()
 
 	c := New(srv.URL, "test-token")
-	_, err = c.Deploy("site123", tmpFile.Name())
+	_, err = c.Deploy("site123", tmpFile.Name(), nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -111,7 +111,7 @@ func TestClient_Deploy_Unauthorized(t *testing.T) {
 	defer srv.Close()
 
 	c := New(srv.URL, "invalid-token")
-	_, err := c.Deploy("site123", tmpDir)
+	_, err := c.Deploy("site123", tmpDir, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -137,7 +137,7 @@ func TestClient_Deploy_SiteNotFound(t *testing.T) {
 	defer srv.Close()
 
 	c := New(srv.URL, "test-token")
-	_, err := c.Deploy("nonexistent", tmpDir)
+	_, err := c.Deploy("nonexistent", tmpDir, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -163,7 +163,7 @@ func TestClient_Deploy_InvalidJSON(t *testing.T) {
 	defer srv.Close()
 
 	c := New(srv.URL, "test-token")
-	_, err := c.Deploy("site123", tmpDir)
+	_, err := c.Deploy("site123", tmpDir, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -185,7 +185,7 @@ func TestZipDirectory_ExcludesGit(t *testing.T) {
 		t.Fatalf("failed to write index.html: %v", err)
 	}
 
-	zipData, err := zipDirectory(tmpDir)
+	zipData, err := zipDirectory(tmpDir, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -224,7 +224,7 @@ func TestZipDirectory_ExcludesEnvFiles(t *testing.T) {
 		t.Fatalf("failed to write index.html: %v", err)
 	}
 
-	zipData, err := zipDirectory(tmpDir)
+	zipData, err := zipDirectory(tmpDir, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -264,7 +264,7 @@ func TestZipDirectory_ExcludesNodeModules(t *testing.T) {
 		t.Fatalf("failed to write index.html: %v", err)
 	}
 
-	zipData, err := zipDirectory(tmpDir)
+	zipData, err := zipDirectory(tmpDir, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -291,7 +291,7 @@ func TestZipDirectory_RelativePaths(t *testing.T) {
 		t.Fatalf("failed to write style.css: %v", err)
 	}
 
-	zipData, err := zipDirectory(tmpDir)
+	zipData, err := zipDirectory(tmpDir, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -355,7 +355,7 @@ func TestZipDirectory_FileContent(t *testing.T) {
 		t.Fatalf("failed to write test.txt: %v", err)
 	}
 
-	zipData, err := zipDirectory(tmpDir)
+	zipData, err := zipDirectory(tmpDir, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -402,7 +402,7 @@ func TestZipDirectory_PortableArtifactPolicy(t *testing.T) {
 	if err := os.Symlink("safe.txt", filepath.Join(dir, "_hostedat.env.json")); err != nil {
 		t.Fatal(err)
 	}
-	data, err := zipDirectory(dir)
+	data, err := zipDirectory(dir, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -421,7 +421,7 @@ func TestZipDirectory_PortableArtifactPolicy(t *testing.T) {
 		if err := os.WriteFile(full, []byte("{}"), 0644); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := zipDirectory(dir); err == nil {
+		if _, err := zipDirectory(dir, nil); err == nil {
 			t.Fatal("reserved metadata packaged as ordinary content")
 		}
 		if err := os.Remove(full); err != nil {

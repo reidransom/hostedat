@@ -208,7 +208,7 @@ hostedat env check --remote --site my-app`} lang="bash" />
 
   <h3>hostedat deploy</h3>
   <p>Deploy a directory to a site. The directory is zipped and uploaded as a new version.</p>
-  <CodeBlock code='hostedat deploy <site> <directory> [--spa]' lang="bash" />
+  <CodeBlock code='hostedat deploy <site> <directory> [--spa] [--schema <path>]' lang="bash" />
 
   <table>
     <thead>
@@ -218,6 +218,8 @@ hostedat env check --remote --site my-app`} lang="bash" />
       <tr><td><code>&lt;site&gt;</code></td><td>Site ID, name, or subdomain slug</td></tr>
       <tr><td><code>&lt;directory&gt;</code></td><td>Path to the directory to upload (e.g., <code>./dist</code>)</td></tr>
       <tr><td><code>--spa</code></td><td>Enable SPA mode on the site after successful deploy</td></tr>
+      <tr><td><code>--schema</code></td><td>Select a <code>.json</code> or <code>.yml</code> declaration relative to the invocation directory</td></tr>
+      <tr><td><code>--allow-insecure-loopback</code></td><td>Permit HTTP manifest preflight/upload only to a loopback development server</td></tr>
     </tbody>
   </table>
 
@@ -228,6 +230,29 @@ hostedat env check --remote --site my-app`} lang="bash" />
 # Deployed! Version: v4`}
     lang="bash"
   />
+
+  <p>
+    Discovery checks only <code>env.json</code>/<code>env.yml</code> in the invocation
+    directory, even when deploying <code>dist</code>. Both defaults require an explicit
+    <code>--schema</code> choice. Missing explicit files fail; without a schema, legacy
+    uploads remain unchanged. JSON and YAML become the same canonical private
+    <code>_hostedat.env.json</code> metadata in memory. The selected source is excluded
+    from ordinary packaging, and a separately supplied canonical manifest is rejected.
+  </p>
+  <p>
+    Manifest uploads require server capability support and read-only validation of
+    stored secrets before uploading. Only declarations are sent; deployment does not
+    read local dotenv/shell values, sync secrets, build applications or inject browser
+    values. Fix missing production values with explicit secret commands. Server
+    activation revalidates transactionally. HTTPS is required except the explicit
+    loopback development flag; redirects are refused.
+  </p>
+  <p>
+    Packaging keeps case-insensitive dotenv and symlink exclusions. The server
+    removes declaration metadata from public assets. Filename rules cannot detect
+    secrets renamed or embedded in application bundles.
+  </p>
+  <CodeBlock code='hostedat deploy my-app ./dist --schema env.yml' lang="bash" />
 
   <hr />
 
