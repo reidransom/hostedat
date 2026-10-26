@@ -54,8 +54,8 @@ func TestWorkerSetEnvVar_Update(t *testing.T) {
 	}
 
 	body := parseJSON(t, rec)
-	if body["value"] != "new" {
-		t.Errorf("value = %v, want new", body["value"])
+	if _, present := body["value"]; present {
+		t.Error("secret write response must omit value")
 	}
 }
 
@@ -137,10 +137,10 @@ func TestWorkerListEnvVars_Success(t *testing.T) {
 		t.Errorf("got %d vars, want 2", len(vars))
 	}
 
-	// Check that secret values are masked
+	// Secret responses expose metadata only, never a server-side placeholder.
 	for _, v := range vars {
-		if v["name"] == "SECRET_KEY" && v["value"] != "********" {
-			t.Errorf("secret value should be masked, got %v", v["value"])
+		if _, present := v["value"]; v["name"] == "SECRET_KEY" && present {
+			t.Error("secret list entry must omit value")
 		}
 		if v["name"] == "PUBLIC_KEY" && v["value"] != "public123" {
 			t.Errorf("public value = %v, want public123", v["value"])

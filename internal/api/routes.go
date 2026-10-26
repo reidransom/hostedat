@@ -80,9 +80,13 @@ func RegisterRoutes(e *echo.Echo, db *gorm.DB, cfg *config.Config, store *storag
 	sites.POST("/:id/deployments/:version/rollback", deployHandler.Rollback)
 
 	// Worker routes
-	sites.POST("/:id/worker/env", workerHandler.SetEnvVar)
-	sites.GET("/:id/worker/env", workerHandler.ListEnvVars)
-	sites.DELETE("/:id/worker/env/:varId", workerHandler.DeleteEnvVar)
+	// Put no-store before authentication and rate limiting so failures are not cached.
+	envMiddlewares := append([]echo.MiddlewareFunc{envManagementNoStore}, apiMiddlewares...)
+	envMiddlewares = append(envMiddlewares, AuthMiddleware(db, cfg.JWTSecret), versionCheck)
+	envRoutes := e.Group("/api/v1/sites/:id/worker/env", envMiddlewares...)
+	envRoutes.POST("", workerHandler.SetEnvVar)
+	envRoutes.GET("", workerHandler.ListEnvVars)
+	envRoutes.DELETE("/:varId", workerHandler.DeleteEnvVar)
 	sites.POST("/:id/worker/kv", workerHandler.CreateKVNamespace)
 	sites.GET("/:id/worker/kv", workerHandler.ListKVNamespaces)
 	sites.DELETE("/:id/worker/kv/:nsId", workerHandler.DeleteKVNamespace)

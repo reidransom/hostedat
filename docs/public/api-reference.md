@@ -426,6 +426,12 @@ curl -X POST https://example.com/api/v1/sites/abc123def456/deployments/2/rollbac
 
 Create or update an environment variable (upsert by name).
 
+Environment management responses use `Cache-Control: no-store`. Secret write and
+list responses contain only `id`, `site_id`, `name`, and `secret`; they never
+contain a `value` field or a replacement placeholder. Plain bindings include
+`value`, including a valid empty string. Response redaction does not encrypt
+stored values.
+
 **Auth:** JWT or API key (must own site or be admin)
 
 **Request:**
@@ -439,7 +445,7 @@ Create or update an environment variable (upsert by name).
 
 - `name` (string, required): Variable name
 - `value` (string, required): Variable value
-- `secret` (bool, optional): If true, value is masked as `********` in list responses
+- `secret` (bool, optional): If true, omit the value from write and list responses
 
 **Response:** `200 OK`
 ```json
@@ -447,7 +453,6 @@ Create or update an environment variable (upsert by name).
   "id": "env123abc456",
   "site_id": "abc123def456",
   "name": "API_KEY",
-  "value": "secret-value",
   "secret": true
 }
 ```
@@ -463,7 +468,8 @@ curl -X POST https://example.com/api/v1/sites/abc123def456/worker/env \
 
 ### GET /sites/:id/worker/env
 
-List all environment variables. Secret values are masked as `********`.
+List all environment variables. Secret entries omit `value`; plain entries include
+their value, even when it is empty. An empty list is returned as `[]`.
 
 **Auth:** JWT or API key (must own site or be admin)
 
@@ -474,11 +480,14 @@ List all environment variables. Secret values are masked as `********`.
     "id": "env123abc456",
     "site_id": "abc123def456",
     "name": "API_KEY",
-    "value": "********",
     "secret": true
   }
 ]
 ```
+
+The dashboard renders its secret placeholder locally. Enter an existing name
+and a replacement value to update it; the editor preserves that entry's secret
+or plain classification and never fills the form with a hidden value.
 
 ---
 

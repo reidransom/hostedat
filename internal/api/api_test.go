@@ -1743,8 +1743,8 @@ func TestWorker_SetEnvVar_Upsert(t *testing.T) {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
 	}
 	body := parseJSON(t, rec)
-	if body["value"] != "new" {
-		t.Errorf("value = %v, want new", body["value"])
+	if _, present := body["value"]; present {
+		t.Error("secret write response must omit value")
 	}
 	if body["secret"] != true {
 		t.Errorf("secret = %v, want true", body["secret"])
@@ -1851,10 +1851,10 @@ func TestWorker_ListEnvVars_Success(t *testing.T) {
 		t.Errorf("got %d vars, want 2", len(vars))
 	}
 
-	// Check secret masking
+	// Secret responses expose metadata only.
 	for _, v := range vars {
-		if v["name"] == "SECRET" && v["value"] != "********" {
-			t.Errorf("secret value not masked: %v", v["value"])
+		if _, present := v["value"]; v["name"] == "SECRET" && present {
+			t.Error("secret list entry must omit value")
 		}
 		if v["name"] == "PUBLIC" && v["value"] != "visible" {
 			t.Errorf("public value should be visible: %v", v["value"])

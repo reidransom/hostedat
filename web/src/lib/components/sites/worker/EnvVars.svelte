@@ -17,14 +17,16 @@
 	let name = $state('');
 	let value = $state('');
 	let secret = $state(false);
+	let existing = $derived(items.find((item) => item.name === name));
+	let effectiveSecret = $derived(existing ? existing.secret : secret);
 	let adding = $state(false);
 	let deletingId = $state<string | null>(null);
 
 	async function handleAdd() {
-		if (!name || !value) return;
+		if (!name) return;
 		adding = true;
 		try {
-			await workers.setEnv(siteId, { name, value, secret });
+			await workers.setEnv(siteId, { name, value, secret: effectiveSecret });
 			name = ''; value = ''; secret = false;
 			onRefresh();
 		} catch (e) { showError(e); } finally { adding = false; }
@@ -48,11 +50,12 @@
 				<div class="flex items-center gap-2 rounded-lg border border-border bg-base p-3">
 					<code class="text-xs font-mono text-text flex-1 truncate">{env.name}</code>
 					{#if env.secret}
-						<span class="text-xs text-text-muted">••••••</span>
+						<span class="text-xs text-text-muted" aria-label="Secret value hidden">••••••</span>
 					{:else}
 						<code class="text-xs font-mono text-text-muted truncate max-w-[200px]">{env.value}</code>
 					{/if}
 					<button
+						aria-label={`Delete ${env.name}`}
 						onclick={() => handleDelete(env.id)}
 						class="text-text-muted hover:text-error transition-colors p-1"
 						disabled={deletingId === env.id}
@@ -75,13 +78,17 @@
 		</div>
 		<div class="flex-1 space-y-1.5">
 			<label for="env-value" class="text-xs font-medium text-text">Value</label>
-			<Input id="env-value" bind:value type={secret ? 'password' : 'text'} placeholder="value" class="text-xs" />
+			<Input id="env-value" bind:value type={effectiveSecret ? 'password' : 'text'} placeholder={existing ? 'Enter replacement value' : 'value'} class="text-xs" />
 		</div>
 		<label class="flex items-center gap-1.5 pb-2 text-xs text-text-muted">
-			<input type="checkbox" bind:checked={secret} class="accent-primary" /> Secret
+			<input type="checkbox" checked={effectiveSecret} onchange={(event) => secret = event.currentTarget.checked} disabled={!!existing} class="accent-primary" /> Secret
 		</label>
-		<Button size="sm" onclick={handleAdd} disabled={adding || !name || !value}>
+		<Button size="sm" onclick={handleAdd} disabled={adding || !name}>
 			{#if adding}<Loader2 class="size-3.5 animate-spin" />{:else}<Plus class="size-3.5" />{/if}
+			{existing ? 'Update' : 'Add'}
 		</Button>
 	</div>
+	{#if existing}
+		<p class="text-xs text-text-muted">Updating {existing.name} preserves its {existing.secret ? 'secret' : 'plain'} classification. Enter a new value; hidden values are never loaded into this form.</p>
+	{/if}
 </div>

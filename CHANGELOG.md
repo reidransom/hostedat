@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Changed
+
+- Environment management write/list responses now use explicit public DTOs:
+  secret values and server-side mask placeholders are omitted, while empty
+  plaintext values remain present. Environment handlers disable response
+  caching, including handled errors. The dashboard uses discriminated
+  secret/plain types, renders placeholders locally, and preserves classification
+  when updating a name. Verified actual handler requests and a headless
+  dashboard update against a disposable server with a real QuickJS worker.
+  This response-only change does not yet encrypt persisted secret values.
+
 ### Internal
 
 - Add the shared `internal/envschema` JSON/YAML secret-declaration parser,

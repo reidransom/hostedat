@@ -19,6 +19,33 @@ type WorkerHandler struct {
 
 // Env Vars
 
+func envManagementNoStore(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		c.Response().Header().Set("Cache-Control", "no-store")
+		return next(c)
+	}
+}
+
+// workerEnvVarResponse is the management representation, never the stored model.
+// A pointer preserves an empty plaintext value while omitting every secret value.
+type workerEnvVarResponse struct {
+	ID     string  `json:"id"`
+	SiteID string  `json:"site_id"`
+	Name   string  `json:"name"`
+	Secret bool    `json:"secret"`
+	Value  *string `json:"value,omitempty"`
+}
+
+func publicEnvVar(envVar models.WorkerEnvVar) workerEnvVarResponse {
+	result := workerEnvVarResponse{
+		ID: envVar.ID, SiteID: envVar.SiteID, Name: envVar.Name, Secret: envVar.Secret,
+	}
+	if !envVar.Secret {
+		result.Value = &envVar.Value
+	}
+	return result
+}
+
 func (h *WorkerHandler) SetEnvVar(c echo.Context) error {
 	userID, _, role := GetUserFromContext(c)
 	siteID := c.Param("id")
@@ -72,7 +99,7 @@ func (h *WorkerHandler) SetEnvVar(c echo.Context) error {
 
 	audit.Record(h.DB, c, "worker.env.set", "site", siteID, audit.Ptr(req.Name))
 
-	return c.JSON(http.StatusOK, envVar)
+	return c.JSON(http.StatusOK, publicEnvVar(envVar))
 }
 
 func (h *WorkerHandler) ListEnvVars(c echo.Context) error {
@@ -93,14 +120,12 @@ func (h *WorkerHandler) ListEnvVars(c echo.Context) error {
 		return errorJSON(c, http.StatusInternalServerError, "failed to list env vars")
 	}
 
-	// Mask secret values
-	for i := range envVars {
-		if envVars[i].Secret {
-			envVars[i].Value = "********"
-		}
+	responses := make([]workerEnvVarResponse, 0, len(envVars))
+	for _, envVar := range envVars {
+		responses = append(responses, publicEnvVar(envVar))
 	}
 
-	return c.JSON(http.StatusOK, envVars)
+	return c.JSON(http.StatusOK, responses)
 }
 
 func (h *WorkerHandler) DeleteEnvVar(c echo.Context) error {
