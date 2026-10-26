@@ -7,6 +7,7 @@ import (
 
 	"github.com/cryguy/hostedat/internal/audit"
 	"github.com/cryguy/hostedat/internal/environment"
+	"github.com/cryguy/hostedat/internal/envschema"
 	"github.com/cryguy/hostedat/internal/models"
 	"github.com/cryguy/hostedat/internal/workeradapter"
 	"github.com/cryguy/worker/v2"
@@ -178,9 +179,16 @@ func (h *WorkerHandler) CreateKVNamespace(c echo.Context) error {
 		SiteID: siteID,
 		Name:   req.Name,
 	}
-	if err := models.WithSiteTransaction(h.DB, siteID, func(tx *gorm.DB, _ *models.Site) error {
+	if err := models.WithSiteTransaction(h.DB, siteID, func(tx *gorm.DB, site *models.Site) error {
+		if err := environment.CheckBindingCreation(tx, site, req.Name); err != nil {
+			return err
+		}
 		return tx.Create(&namespace).Error
 	}); err != nil {
+		var diagnostic *envschema.Diagnostic
+		if errors.As(err, &diagnostic) {
+			return errorJSON(c, http.StatusBadRequest, diagnostic.Error())
+		}
 		return errorJSON(c, http.StatusInternalServerError, "failed to create namespace")
 	}
 
@@ -395,9 +403,16 @@ func (h *WorkerHandler) CreateD1Database(c echo.Context) error {
 		SiteID: siteID,
 		Name:   req.Name,
 	}
-	if err := models.WithSiteTransaction(h.DB, siteID, func(tx *gorm.DB, _ *models.Site) error {
+	if err := models.WithSiteTransaction(h.DB, siteID, func(tx *gorm.DB, site *models.Site) error {
+		if err := environment.CheckBindingCreation(tx, site, req.Name); err != nil {
+			return err
+		}
 		return tx.Create(&database).Error
 	}); err != nil {
+		var diagnostic *envschema.Diagnostic
+		if errors.As(err, &diagnostic) {
+			return errorJSON(c, http.StatusBadRequest, diagnostic.Error())
+		}
 		return errorJSON(c, http.StatusInternalServerError, "failed to create database")
 	}
 
@@ -496,9 +511,16 @@ func (h *WorkerHandler) CreateDurableObjectNamespace(c echo.Context) error {
 		SiteID: siteID,
 		Name:   req.Name,
 	}
-	if err := models.WithSiteTransaction(h.DB, siteID, func(tx *gorm.DB, _ *models.Site) error {
+	if err := models.WithSiteTransaction(h.DB, siteID, func(tx *gorm.DB, site *models.Site) error {
+		if err := environment.CheckBindingCreation(tx, site, req.Name); err != nil {
+			return err
+		}
 		return tx.Create(&namespace).Error
 	}); err != nil {
+		var diagnostic *envschema.Diagnostic
+		if errors.As(err, &diagnostic) {
+			return errorJSON(c, http.StatusBadRequest, diagnostic.Error())
+		}
 		return errorJSON(c, http.StatusInternalServerError, "failed to create namespace")
 	}
 

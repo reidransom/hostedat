@@ -1,6 +1,6 @@
 # Native secrets and environment: sequential implementation tasks
 
-Status: reviewed task breakdown; tasks 01–06 implemented and verified. Tasks 07–15 have not started. Execute in numbered order. The detailed contract and acceptance matrix in `native-secrets-env-plan.md` remain authoritative; this file changes sequencing, not scope.
+Status: reviewed task breakdown; tasks 01–07 implemented and verified. Tasks 08–15 have not started. Execute in numbered order. The detailed contract and acceptance matrix in `native-secrets-env-plan.md` remain authoritative; this file changes sequencing, not scope.
 
 ## Review decisions
 
@@ -71,9 +71,10 @@ For each task: inspect current code and existing test patterns; inspect referenc
 
 ### 07 — Binding collisions in both directions
 
-- [ ] Enforce runtime-reserved names and site-bound namespace collisions for environment writes, declarations, and creation of ASSETS/KV/D1/storage/durable-object/other supported bindings.
+- [x] Enforce runtime-reserved names and site-bound namespace collisions for environment writes, declarations, and creation of ASSETS/KV/D1/storage/durable-object/other supported bindings.
 - Use the same database coordination as environment changes; inspect every actual binding creation path, not only worker env handlers.
 - Proof: both creation orders and concurrent conflicting creates fail without shadowing; unrelated legacy namespace behavior remains intact.
+- Evidence: `.scratch/native-secrets-task07-verification.md`; focused race-enabled checks and actual two-process production HTTP/QuickJS/SeaweedFS smoke prove both creation orders, one committed winner in 24 concurrent conflicts, absent optional declaration reservations, intact legacy naming and real S3 loser-bucket cleanup.
 
 ### 08 — Artifact path and public-serving policy
 

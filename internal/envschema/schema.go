@@ -86,6 +86,17 @@ func ValidateName(name string) error {
 	return nil
 }
 
+// ValidateRuntimeName rejects the platform binding and prototype-sensitive names.
+// It is separate from the portable grammar so legacy namespace naming remains
+// supported. Reservations are case-insensitive; site-bound names are exact.
+func ValidateRuntimeName(name string) error {
+	switch strings.ToUpper(name) {
+	case "ASSETS", "__PROTO__", "PROTOTYPE", "CONSTRUCTOR":
+		return diagnostic("", "name is reserved for runtime bindings")
+	}
+	return nil
+}
+
 // Parse reads at most MaxDocumentBytes+1 bytes and accepts exactly one mapping.
 // JSON uses strict JSON syntax; both formats reject duplicates and coercion.
 func Parse(r io.Reader, format Format) (Schema, error) {
@@ -208,6 +219,9 @@ func (s Schema) Names() []string {
 func (s Schema) Check() error {
 	for _, name := range s.Names() {
 		if err := ValidateName(name); err != nil {
+			return err
+		}
+		if err := ValidateRuntimeName(name); err != nil {
 			return err
 		}
 		rule := s[name]

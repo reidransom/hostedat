@@ -834,6 +834,15 @@ The `tail` handler is called with an array of trace events after the `fetch` or 
 
 The `env` object passed to `fetch` and `scheduled` contains:
 
+Names share one site-scoped namespace across plain variables, secrets, KV,
+D1, object storage and Durable Objects. Management writes and binding creation
+reject collisions in either order, including optional names in the established
+active secret declaration. `ASSETS`, `__PROTO__`, `PROTOTYPE`, and `CONSTRUCTOR`
+are reserved case-insensitively; other names compare exactly, with no blanket
+reservation of type labels such as `KV`, `D1` or `CACHE`. Existing environment
+rows that collide with runtime bindings fail closed at environment loading
+rather than silently shadowing a string with an object.
+
 ### Plain Environment Variables
 
 Set via `POST /api/v1/sites/:id/worker/env` with `secret: false`.
@@ -844,7 +853,7 @@ const value = env.MY_VAR; // string
 
 ### Secret Environment Variables
 
-Set via `POST /api/v1/sites/:id/worker/env` with `secret: true`. Values are masked in API responses but available at full value inside the worker.
+Set via `POST /api/v1/sites/:id/worker/env` with `secret: true`. Values are omitted from management responses, encrypted at rest, and available as full strings only inside the worker environment.
 
 ```js
 const apiKey = env.API_SECRET; // full string, not masked

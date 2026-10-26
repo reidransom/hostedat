@@ -432,6 +432,22 @@ contain a `value` field or a replacement placeholder. Plain bindings include
 `value`, including a valid empty string. Secret rows use AES-256-GCM encrypted
 storage; the server requires operator key configuration and offline migration.
 
+Environment writes and every declaration name (including absent optional names)
+must not collide with a site's KV, D1, storage or Durable Object binding.
+`ASSETS`, `__PROTO__`, `PROTOTYPE`, and `CONSTRUCTOR` are reserved
+case-insensitively. Site-specific binding names otherwise compare exactly:
+`TOKEN` and `token` are distinct, and the type labels `KV`, `D1`, and `CACHE`
+are not themselves reserved.
+
+The reverse check also applies to all four binding-creation routes: a new
+binding cannot take an existing plain/secret environment name, another
+binding's name, or any name in the established active declaration, even an
+optional secret not yet provisioned. Collision checks and inserts share the
+same database-backed site transaction as environment mutations, so concurrent
+conflicting creates cannot both commit. New collisions return safe `400`
+errors; existing storage duplicate-name checks may return `409`. Legacy KV,
+D1 and Durable Object naming syntax remains unchanged outside these restrictions.
+
 **Auth:** JWT or API key (must own site or be admin)
 
 **Request:**
@@ -538,6 +554,8 @@ bindings cannot satisfy secret declarations.
 The `schema` field is required; `{}` is an explicit empty declaration, while
 omission/null is invalid. Unknown fields, including submitted `values`, fail.
 Declaration/body bounds match bulk. Validation uses one database read snapshot.
+All names are checked for runtime reservations and site binding collisions even
+when optional and absent. This check does not reserve or activate candidate names.
 
 **Response:** `200 OK`:
 ```json

@@ -57,6 +57,9 @@ func (s *Service) ValidateStored(tx *gorm.DB, siteID string, schema envschema.Sc
 	if err := schema.Check(); err != nil {
 		return err
 	}
+	if err := CheckEnvironmentNames(tx, siteID, schema.Names()); err != nil {
+		return err
+	}
 	values := make(map[string]string, len(schema))
 	for _, name := range schema.Names() {
 		row, err := models.FindWorkerEnvVar(tx, siteID, name)
@@ -119,6 +122,18 @@ func (s *Service) Bulk(siteID string, writes []Write, candidate envschema.Schema
 	err := models.WithSiteTransaction(s.DB, siteID, func(tx *gorm.DB, site *models.Site) error {
 		active, err := ActiveSchema(tx, site)
 		if err != nil {
+			return err
+		}
+		if candidate != nil {
+			if err := CheckEnvironmentNames(tx, siteID, candidate.Names()); err != nil {
+				return err
+			}
+		}
+		names := make([]string, 0, len(writes))
+		for _, w := range writes {
+			names = append(names, w.Name)
+		}
+		if err := CheckEnvironmentNames(tx, siteID, names); err != nil {
 			return err
 		}
 		// Prepare and validate every entry before the first database mutation.

@@ -24,6 +24,16 @@
 
 ### Security
 
+- Enforce environment/binding collisions in both directions for KV, D1, object
+  storage and Durable Object provisioning under the shared database-backed site
+  transaction. Check all declaration names, including absent optional secrets;
+  reserve ASSETS and prototype-sensitive names case-insensitively. Preserve
+  other legacy namespace syntax and exact per-site name comparisons. Existing
+  environment/runtime-binding collisions fail closed rather than shadowing.
+  Focused race-enabled checks and two real server processes prove one winner
+  for conflicting creates; actual QuickJS and SeaweedFS smoke verifies intact
+  string/object bindings and storage loser cleanup.
+
 - Encrypt worker secrets with versioned AES-256-GCM, random nonces, operator key
   IDs and site/name/version associated data. Require a restricted key file and
   explicit offline migration (including uniqueness installation) before startup.

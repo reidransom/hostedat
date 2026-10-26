@@ -76,8 +76,17 @@ func (s *Service) value(row models.WorkerEnvVar) (string, error) {
 // Load creates a fresh invocation snapshot. No cache or plaintext-secret fallback.
 func (s *Service) Load(siteID string) (map[string]string, map[string]string, error) {
 	var rows []models.WorkerEnvVar
-	if err := s.DB.Where("site_id = ?", siteID).Find(&rows).Error; err != nil {
-		return nil, nil, ErrStorage
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("site_id = ?", siteID).Find(&rows).Error; err != nil {
+			return ErrStorage
+		}
+		names := make([]string, 0, len(rows))
+		for _, row := range rows {
+			names = append(names, row.Name)
+		}
+		return CheckEnvironmentNames(tx, siteID, names)
+	}); err != nil {
+		return nil, nil, safeError(err)
 	}
 	vars, secrets := map[string]string{}, map[string]string{}
 	seen := map[string]bool{}
