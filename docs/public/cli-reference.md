@@ -1,6 +1,6 @@
 # hostedat CLI Reference
 
-The `hostedat` CLI manages sites, deployments, storage buckets, and S3-compatible credentials. It authenticates with API keys and communicates with a hostedat server over HTTPS.
+The `hostedat` CLI manages sites, deployments, server-side secrets, storage buckets, and S3-compatible credentials. It authenticates with API keys and communicates with a hostedat server over HTTPS.
 
 ---
 
@@ -74,13 +74,7 @@ Created automatically by `hostedat login`. File permissions are set to `0600` (o
 
 ## Site Resolution
 
-Commands that accept a `<site>` argument resolve it in the following order, stopping at the first match:
-
-1. Exact site ID (nanoid, 12 lowercase alphanumeric characters)
-2. Site name (display name)
-3. Subdomain slug
-
-This means you can use any of `abc123def456`, `my-blog`, or `my-blog` (if the slug matches) interchangeably in all site commands.
+Commands that accept a `<site>` argument match exact site IDs, exact subdomain slugs, or case-insensitive display names. If more than one site matches, the command lists the candidates and requires a unique reference; use the site ID to disambiguate. No project linking or saved target is required.
 
 ---
 
@@ -93,6 +87,10 @@ This means you can use any of `abc123def456`, `my-blog`, or `my-blog` (if the sl
 | `hostedat sites create <name>` | Create a new site |
 | `hostedat sites delete <site>` | Delete a site and cascade all resources |
 | `hostedat deploy <site> <directory>` | Deploy a directory as a new version |
+| `hostedat secret put <site> <name>` | Create or replace a secret using hidden input or explicit stdin |
+| `hostedat secret sync <site> <file>` | Atomically merge a named dotenv source |
+| `hostedat secret list <site>` | List sorted secret metadata only |
+| `hostedat secret delete <site> <name>` | Delete a secret by site-scoped name |
 | `hostedat storage list <site>` | List storage buckets for a site |
 | `hostedat storage create <site>` | Create a storage bucket binding |
 | `hostedat storage update <site> <bucket-id>` | Toggle bucket public/private |
@@ -556,6 +554,64 @@ Storage credential deleted.
 
 ---
 
+### hostedat secret
+
+Manage server-side secrets without revealing their values. These commands reuse the
+normal authentication and site resolution above; they do not link a project, save
+a target/source path, build an application, or load local dotenv values implicitly.
+
+```sh
+hostedat secret put my-app TOKEN
+printf '%s' "$PRODUCTION_TOKEN" | hostedat secret put my-app TOKEN --stdin
+hostedat secret sync my-app /secure/production-secrets.txt
+hostedat secret list my-app
+hostedat secret list my-app --json
+hostedat secret delete my-app TOKEN
+hostedat secret delete my-app TOKEN --yes
+```
+
+- **Put:** resolves the server and site and shows a quoted target before reading
+  input. Terminal input is hidden and bounded to 1 MiB. Non-TTY callers must pass
+  `--stdin`; there is no `--value`. Stdin removes exactly one final LF or CRLF,
+  preserving other whitespace, CRs and multiline content. Use stdin for multiline
+  credentials. Values must be UTF-8; required declarations reject empty strings.
+- **Sync:** requires a named regular dotenv file, bounded to 1 MiB and 1–256 entries.
+  It rejects the project's local `.env`, including symlink/hard-link aliases.
+  Use a source outside the deployment tree with owner-only `0600` permissions.
+  Complete syntax/name/declaration validation precedes any server request. One
+  bulk transaction merges supplied names, preserving omitted names and existing
+  IDs; invalid inputs or storage errors do not partially apply. No sequential
+  fallback or pruning occurs. Never put a source file inside an uploaded directory.
+- **Declarations:** put and sync discover only `env.json` or `env.yml` in the
+  invocation directory, or accept `--schema <path>` (relative to that directory).
+  Both defaults present require explicit selection; missing explicit files and
+  unsupported extensions fail. Supplied names must be declared when a schema is
+  present, and all are secrets regardless of prefix. Omitted required declarations
+  may be provisioned separately; local candidate schemas never activate deployment
+  requirements. The server also enforces the running deployment's declarations
+  and binding collisions.
+- **Dotenv syntax:** `NAME=value`, optional `export`, LF/CRLF, quoted `#`, quoted
+  multiline values and comments are supported. Unquoted edge whitespace is
+  trimmed; quoted whitespace is retained. Double-quoted `\\n`/`\\r` escapes are
+  decoded by the maintained parser. Dollar substitutions and backticks remain
+  literal; no shell or project code executes. Duplicate assignments fail.
+- **List:** emits secret entries only, sorted by name, with IDs and `secret=true`.
+  `--json` returns an array of `{id,site_id,name,secret}` metadata, including `[]`
+  for no secrets. It never includes plaintext bindings or secret values.
+- **Delete:** resolves the name within the selected site, refuses plaintext
+  bindings, and prompts `[y/N]` unless `--yes` is supplied. Required active secrets
+  cannot be deleted.
+
+Every secret command requires the server's `secrets-env-v1` capability and HTTPS.
+For explicit local development only, pass `--allow-insecure-loopback` to allow HTTP
+to `localhost` or a literal loopback IP. Remote HTTP and all redirects remain
+forbidden. Errors from environment operations are status-only, not server response
+bodies. Success output contains names/counts only. At-rest encryption cannot stop
+an authorized worker from disclosing a secret, and in-flight requests retain their
+existing environment snapshot.
+
+---
+
 ### hostedat version
 
 Print the CLI version, git commit hash, and compiled-in default server URL (if set).
@@ -606,6 +662,7 @@ The following commands prompt `[y/N]` before proceeding with a destructive actio
 | `sites delete` | `Delete site <site>? This cannot be undone. [y/N]` |
 | `storage delete` | `Delete storage bucket <id>? This will remove all stored data. [y/N]` |
 | `storage-credentials delete` | `Delete storage credential <id>? Any integrations using it will stop working. [y/N]` |
+| `secret delete` | `Delete secret <name> from site "<site name>" ("<site ID>")? [y/N]` |
 
 Pass `--yes` to skip the prompt in scripts and CI pipelines.
 

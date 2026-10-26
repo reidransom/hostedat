@@ -4,6 +4,17 @@
 
 ### Changed
 
+- Add native `secret put/sync/list/delete` commands using existing credential/site
+  resolution, hidden bounded terminal input and explicit `--stdin` for CI.
+  Put/sync support discovered JSON/YAML declarations and `--schema`; atomic sync
+  rejects local `.env` aliases, preserves omitted names/IDs and never builds apps.
+  List/JSON emit secret metadata only; delete refuses plaintext and honors
+  confirmation/`--yes` and active requirements. All commands negotiate capability,
+  require HTTPS except explicit loopback development and refuse redirects.
+  Focused race-enabled regressions, a built CLI against the production server,
+  real hidden-input PTY capture, SQLite-trigger rollback and real QuickJS
+  next-invocation replacement were exercised.
+
 - Make the dashboard environment editor available on owned empty sites, before
   the first worker deployment. Keep worker-only tabs hidden until a worker exists,
   preserve secret classification on replacement, and display value-free required
@@ -39,8 +50,8 @@
   development opt-in; refuse redirects in the shared HTTP client and keep secure
   errors body-free. Focused race-enabled client/handler checks and actual
   production-server/QuickJS smoke verified atomic rollback, metadata redaction
-  and next-invocation secret replacement. Native secret/env CLI commands and
-  schema-aware CLI packaging remain separate integrations.
+  and next-invocation secret replacement. Native secret commands are integrated
+  above; env checks and schema-aware CLI packaging remain separate integrations.
 
 - Enforce canonical declarations before compilation and again under the shared
   database-backed activation lock, validating required presence, decrypted types,

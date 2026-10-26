@@ -6,7 +6,7 @@ import CodeBlock from '../../components/CodeBlock.astro';
 <DocsLayout title="CLI Reference">
   <h1>CLI Reference</h1>
   <p>
-    The <code>hostedat</code> CLI manages deployments, storage buckets, and S3-compatible credentials.
+    The <code>hostedat</code> CLI manages deployments, server-side secrets, storage buckets, and S3-compatible credentials.
     It authenticates with API keys and talks to your hostedat server over HTTPS.
   </p>
 
@@ -19,6 +19,7 @@ import CodeBlock from '../../components/CodeBlock.astro';
       <tr><td><code>hostedat login</code></td><td>Authenticate in browser and save API key</td></tr>
       <tr><td><code>hostedat sites ...</code></td><td>Create, list, and delete sites</td></tr>
       <tr><td><code>hostedat deploy ...</code></td><td>Deploy a directory to a site</td></tr>
+      <tr><td><code>hostedat secret ...</code></td><td>Put, atomically sync, list metadata, or delete secrets</td></tr>
       <tr><td><code>hostedat storage ...</code></td><td>Manage worker storage buckets and uploads</td></tr>
       <tr><td><code>hostedat storage-credentials ...</code></td><td>Manage S3-compatible access keys</td></tr>
       <tr><td><code>hostedat version</code></td><td>Print CLI version and default server</td></tr>
@@ -120,6 +121,53 @@ import CodeBlock from '../../components/CodeBlock.astro';
       <tr><td><code>--yes</code></td><td>Skip confirmation prompt</td></tr>
     </tbody>
   </table>
+
+  <hr />
+
+  <h2>Server-side secrets</h2>
+  <CodeBlock code={`hostedat secret put my-app TOKEN
+printf '%s' "$PRODUCTION_TOKEN" | hostedat secret put my-app TOKEN --stdin
+hostedat secret sync my-app /secure/production-secrets.txt
+hostedat secret list my-app --json
+hostedat secret delete my-app TOKEN --yes`} lang="bash" />
+  <p>
+    Secret commands reuse normal credentials and site IDs, names or slugs, with
+    existing ambiguity handling. They never link a project or save a target.
+    Put resolves and displays the target before reading hidden terminal input.
+    Non-TTY callers must explicitly pass <code>--stdin</code>; there is no value
+    argument. Input is bounded to 1 MiB and exactly one trailing LF or CRLF is
+    removed; all other whitespace and multiline content is preserved.
+  </p>
+  <p>
+    Put and sync accept <code>--schema &lt;path&gt;</code> or discover
+    <code>env.json</code>/<code>env.yml</code> only in the invocation directory.
+    Both defaults require explicit selection. All supplied names must be declared
+    when a schema is selected, regardless of prefix, and the active server schema
+    remains authoritative. Candidate schemas do not activate requirements.
+  </p>
+  <p>
+    Sync requires a named regular dotenv file, bounded to 1 MiB and 256 entries.
+    The local root <code>.env</code> and equivalent aliases are rejected.
+    Keep production sources outside the deployment tree with mode 0600.
+    Complete source validation precedes requests; one atomic merge preserves
+    omitted names and IDs with no pruning or per-name fallback. Quoted hashes,
+    LF/CRLF, quoted multiline values and comments are supported. Unquoted edge
+    whitespace is trimmed; quoted whitespace is preserved. Substitutions remain
+    literal and no shell or project code executes.
+  </p>
+  <p>
+    List shows sorted secret metadata only, never values or plaintext bindings,
+    including in JSON. Delete resolves a name within the site, refuses plaintext
+    bindings and requires <code>y</code> confirmation unless <code>--yes</code>
+    is passed. Active required secrets cannot be deleted.
+  </p>
+  <p>
+    All secret commands require HTTPS and server capability
+    <code>secrets-env-v1</code>. For explicit loopback development only, use
+    <code>--allow-insecure-loopback</code>. Remote HTTP and redirects are refused.
+    These commands never read local dotenv implicitly, build an application or
+    reveal/export secrets. Authorized worker code can still disclose its bindings.
+  </p>
 
   <hr />
 

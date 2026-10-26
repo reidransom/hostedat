@@ -43,7 +43,7 @@ func (c *Client) DeleteSite(id string) error {
 func (c *Client) ResolveSite(ref string) (*Site, error) {
 	sites, err := c.ListSites()
 	if err != nil {
-		return nil, fmt.Errorf("failed to list sites: %w", err)
+		return nil, fmt.Errorf("failed to list sites: %w", safeClientError(err))
 	}
 
 	var matches []Site

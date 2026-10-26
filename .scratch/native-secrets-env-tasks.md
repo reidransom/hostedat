@@ -1,6 +1,6 @@
 # Native secrets and environment: sequential implementation tasks
 
-Status: reviewed task breakdown; tasks 01–11 implemented and verified. Tasks 12–15 have not started. Execute in numbered order. The detailed contract and acceptance matrix in `native-secrets-env-plan.md` remain authoritative; this file changes sequencing, not scope.
+Status: reviewed task breakdown; tasks 01–12 implemented and verified. Tasks 13–15 have not started. Execute in numbered order. The detailed contract and acceptance matrix in `native-secrets-env-plan.md` remain authoritative; this file changes sequencing, not scope.
 
 ## Review decisions
 
@@ -112,11 +112,12 @@ For each task: inspect current code and existing test patterns; inspect referenc
 
 ### 12 — Native secret commands
 
-- [ ] Register secret put/sync/list/delete; reuse ResolveSite and existing credential resolution/ambiguity handling. No linking or saved target.
+- [x] Register secret put/sync/list/delete; reuse ResolveSite and existing credential resolution/ambiguity handling. No linking or saved target.
 - Put resolves server/site before prompting, shows safe target, uses Cobra streams and hidden terminal input; non-TTY requires explicit --stdin. Bound input, remove exactly one trailing LF/CRLF, preserve other whitespace/multiline; no --value.
 - Sync requires named bounded dotenv input, rejects local .env, validates complete source/schema before mutation, never saves source/path. Reuse shared server limits. Put/sync support --schema and active remote rules.
 - List secret metadata only, sorted names, IDs/flags and safe --json. Delete resolves site-scoped secret name, refuses plaintext, honors existing confirmation and --yes.
 - Proof: built CLI against disposable server; real PTY hidden-input capture, piped CI input, missing auth/site/non-TTY errors, exact whitespace, atomic sync, stable IDs/unrelated-name preservation, redacted output and delete confirmation.
+- Evidence: `.scratch/native-secrets-task12-verification.md`; focused race-enabled command/client/schema regressions and actual built-CLI/production-server smoke prove hidden PTY input/cancellation restoration, explicit CI input, exact whitespace, auth/site/ambiguity errors, atomic SQLite-trigger rollback, stable IDs, metadata redaction, delete confirmation/active rules and real QuickJS next-invocation updates.
 
 ### 13 — Local and remote env check
 
