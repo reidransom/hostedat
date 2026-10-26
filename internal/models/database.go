@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 
 	"github.com/cryguy/hostedat/internal/config"
 	"github.com/glebarez/sqlite"
@@ -17,7 +18,13 @@ func InitDB(cfg config.DBConfig) (*gorm.DB, error) {
 
 	switch cfg.Driver {
 	case "sqlite":
-		dsn := cfg.DSN + "?_journal_mode=WAL&_busy_timeout=5000"
+		separator := "?"
+		if strings.Contains(cfg.DSN, "?") {
+			separator = "&"
+		}
+		// glebarez/go-sqlite accepts _pragma, not mattn's _journal_mode or
+		// _busy_timeout. Apply these on every physical pooled connection.
+		dsn := cfg.DSN + separator + "_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"
 		db, err = gorm.Open(sqlite.Open(dsn), &gorm.Config{
 			Logger: logger.Default.LogMode(logger.Warn),
 		})
@@ -38,6 +45,10 @@ func InitDB(cfg config.DBConfig) (*gorm.DB, error) {
 	}
 
 	if err := ensureNoDuplicateStorageBindingNames(db); err != nil {
+		closeDB()
+		return nil, err
+	}
+	if err := CheckWorkerEnvDuplicates(db); err != nil {
 		closeDB()
 		return nil, err
 	}

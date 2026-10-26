@@ -3,6 +3,7 @@ package api
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -125,15 +126,13 @@ func (h *DeployHandler) Deploy(c echo.Context) error {
 	var deployment models.Deployment
 	var oldDeployID *string
 
-	txErr := h.DB.Transaction(func(tx *gorm.DB) error {
+	txErr := models.WithSiteTransaction(h.DB, siteID, func(tx *gorm.DB, freshSite *models.Site) error {
 		var maxVersion int
-		tx.Model(&models.Deployment{}).Where("site_id = ?", siteID).Select("COALESCE(MAX(version), 0)").Scan(&maxVersion)
+		if err := tx.Model(&models.Deployment{}).Where("site_id = ?", siteID).Select("COALESCE(MAX(version), 0)").Scan(&maxVersion).Error; err != nil {
+			return err
+		}
 		nextVersion := maxVersion + 1
 
-		var freshSite models.Site
-		if err := tx.First(&freshSite, "id = ?", siteID).Error; err != nil {
-			return fmt.Errorf("reload site: %w", err)
-		}
 		oldDeployID = freshSite.ActiveDeployID
 
 		deployment = models.Deployment{
@@ -147,7 +146,7 @@ func (h *DeployHandler) Deploy(c echo.Context) error {
 			return fmt.Errorf("create deployment: %w", err)
 		}
 
-		if err := tx.Model(&freshSite).Updates(map[string]interface{}{
+		if err := tx.Model(freshSite).Updates(map[string]interface{}{
 			"active_version":   nextVersion,
 			"active_deploy_id": deployID,
 			"has_worker":       hasWorker,
@@ -189,26 +188,30 @@ func (h *DeployHandler) Rollback(c echo.Context) error {
 		return errorJSON(c, http.StatusForbidden, "access denied")
 	}
 
-	if site.ActiveVersion != nil && *site.ActiveVersion == version {
-		return errorJSON(c, http.StatusBadRequest, "already the active version")
-	}
-
-	// Verify the deployment exists
 	var dep models.Deployment
-	if err := h.DB.First(&dep, "site_id = ? AND version = ?", siteID, version).Error; err != nil {
-		return errorJSON(c, http.StatusNotFound, "deployment not found")
-	}
-
-	oldDeployID := site.ActiveDeployID
-
-	// Update site to the target version in a transaction.
-	if err := h.DB.Transaction(func(tx *gorm.DB) error {
-		return tx.Model(&site).Updates(map[string]interface{}{
+	var oldDeployID *string
+	errAlreadyActive := fmt.Errorf("already the active version")
+	err := models.WithSiteTransaction(h.DB, siteID, func(tx *gorm.DB, freshSite *models.Site) error {
+		if freshSite.ActiveVersion != nil && *freshSite.ActiveVersion == version {
+			return errAlreadyActive
+		}
+		if err := tx.First(&dep, "site_id = ? AND version = ?", siteID, version).Error; err != nil {
+			return err
+		}
+		oldDeployID = freshSite.ActiveDeployID
+		return tx.Model(freshSite).Updates(map[string]interface{}{
 			"active_version":   version,
 			"active_deploy_id": dep.ID,
 			"has_worker":       dep.HasWorker,
 		}).Error
-	}); err != nil {
+	})
+	if err == errAlreadyActive {
+		return errorJSON(c, http.StatusBadRequest, "already the active version")
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return errorJSON(c, http.StatusNotFound, "deployment not found")
+	}
+	if err != nil {
 		return errorJSON(c, http.StatusInternalServerError, "failed to rollback deployment")
 	}
 

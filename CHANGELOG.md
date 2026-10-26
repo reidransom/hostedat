@@ -15,6 +15,17 @@
 
 ### Internal
 
+- Persist nullable internal deployment declaration snapshots and a default-off
+  site enforcement flag, preserving absent versus explicit empty declarations.
+  Coordinate environment writes/deletes, deployment/rollback activation and
+  binding creation through a shared SQLite-backed transaction protocol across
+  connections and processes. Correct the driver's WAL/busy-timeout options.
+  Startup and name lookup refuse duplicate environment names; an explicit
+  offline-maintenance helper installs uniqueness only after resolution.
+  Focused race-enabled tests and two real server processes verify concurrent
+  same-name upserts, lock serialization and activation rollback, with actual
+  QuickJS invocation before/after rollback. Encryption and declaration
+  enforcement are not yet enabled.
 - Add the shared `internal/envschema` JSON/YAML secret-declaration parser,
   deterministic canonical JSON, strict rule/name checks, and value-free
   validation diagnostics. Focused race-enabled tests and a disposable consumer

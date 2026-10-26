@@ -114,7 +114,9 @@ func (h *StorageHandler) CreateBucket(c echo.Context) error {
 		BucketName: req.BucketName,
 		Public:     req.Public,
 	}
-	if err := h.DB.Create(&bucket).Error; err != nil {
+	if err := models.WithSiteTransaction(h.DB, siteID, func(tx *gorm.DB, _ *models.Site) error {
+		return tx.Create(&bucket).Error
+	}); err != nil {
 		_ = h.S3Client.RemoveBucket(ctx, req.BucketName)
 		if isUniqueConstraintError(err) {
 			return errorJSON(c, http.StatusConflict, "bucket or binding name already exists")

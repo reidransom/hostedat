@@ -209,7 +209,8 @@ All API routes are under `/api/v1`. The CLI sends an `X-Hostedat-Version` header
 
 ## Database
 
-**GORM** with driver support for SQLite (default), PostgreSQL, and MySQL.
+**GORM** with SQLite, currently the only configured driver. Connections use WAL
+and a 5-second busy timeout, including newly opened pooled connections.
 
 ### ID Generation
 
@@ -225,8 +226,8 @@ const nanoidLength = 12
 | Model | Key Fields |
 |-------|-----------|
 | `User` | `id`, `email`, `password_hash`, `role` (`superadmin`/`admin`/`user`) |
-| `Site` | `id`, `user_id`, `subdomain_slug` (unique), `name`, `spa_mode`, `has_worker`, `active_version`, `active_deploy_id` |
-| `Deployment` | `id`, `site_id`, `version` (auto-increment per site), `file_hash`, `has_worker` |
+| `Site` | `id`, `user_id`, `subdomain_slug` (unique), `name`, `spa_mode`, `has_worker`, `active_version`, `active_deploy_id`, internal `env_declarations_enforced` |
+| `Deployment` | `id`, `site_id`, `version` (auto-increment per site), `file_hash`, `has_worker`, nullable internal `env_declaration` |
 | `APIKey` | `id`, `user_id`, `key_hash`, `name` |
 | `Invite` | `id`, `code`, `created_by`, `max_uses`, `use_count`, `expires_at`, `active` |
 | `AuthCode` | `id`, `code`, `user_id`, `code_challenge`, `used`, `expires_at` |
@@ -240,6 +241,43 @@ const nanoidLength = 12
 | `CacheEntry` | `id`, `cache_name`, `url`, `status`, `headers`, `body`, `expires_at` |
 | `RevokedToken` | `token_hash`, `expires_at` |
 | `Setting` | `key`, `value` (used for `registration_enabled`, `invite_required`) |
+
+### Site binding and activation transactions
+
+Environment upsert/delete, deployment activation, rollback, and KV/D1/durable
+object/storage binding creation share `models.WithSiteTransaction`. Its first
+statement is a no-op write to the site row, acquiring SQLite's writer lock before
+reading the current site or validating/changing bindings. Checks and writes must
+use the callback's transaction handle. Errors roll back all database writes;
+external work and post-commit audits must stay outside the callback.
+
+This is database-backed coordination across connections/processes, not a Go
+mutex. SQLite serializes writers database-wide, including unrelated sites.
+Lock acquisition can fail after the busy timeout; it must not continue with
+uncoordinated writes. Deployment versions are allocated under the same lock,
+and rollback reloads current activation state after acquiring it.
+
+The declaration columns preserve future enforcement state without enabling it:
+`env_declaration IS NULL` means absent, while canonical `"{}"` means an explicit
+empty declaration. The site flag defaults to false. These internal fields are
+not serialized by the management API. Manifest loading and enforcement are not
+yet enabled.
+
+Startup refuses duplicate environment `(site_id, name)` rows. A name lookup
+also refuses ambiguity rather than selecting a first/last row. To resolve legacy
+data, stop all writers and workers and back up the database. Inspect only
+`id, site_id, name, secret` metadata to identify duplicate groups, explicitly
+choose which IDs to retain/remove, and resolve them in a transaction; no
+automatic winner or value-based deduplication is supported.
+
+Offline encrypted-storage maintenance will call
+`models.InstallWorkerEnvUniqueness(tx)` after explicit resolution, inside its
+maintenance transaction. It rechecks duplicates and installs the unique
+`idx_worker_env_site_name` index on `(site_id, name)`, refusing partial resolution.
+The index is intentionally not installed by automatic model migration.
+The maintenance command and encryption remain subsequent implementation work;
+do not mistake these coordination changes for encrypted secret storage.
+
 
 ### Site Deletion Cascade
 
