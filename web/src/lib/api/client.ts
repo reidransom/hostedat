@@ -9,6 +9,7 @@ import type {
 	InstanceSettings,
 	User,
 	WorkerEnvVar,
+	WorkerEnvVarWrite,
 	KVNamespace,
 	CronSchedule,
 	WorkerLog,
@@ -146,7 +147,7 @@ export const apiKeys = {
 
 export const workers = {
 	listEnv: (siteId: string) => request<WorkerEnvVar[]>(`/sites/${siteId}/worker/env`),
-	setEnv: (siteId: string, data: { name: string; value: string; secret: boolean }) =>
+	setEnv: (siteId: string, data: WorkerEnvVarWrite) =>
 		request<WorkerEnvVar>(`/sites/${siteId}/worker/env`, {
 			method: 'POST',
 			body: JSON.stringify(data)

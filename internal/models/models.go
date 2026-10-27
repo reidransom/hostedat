@@ -43,15 +43,16 @@ func (u *User) BeforeCreate(_ *gorm.DB) error {
 }
 
 type Site struct {
-	ID             string    `gorm:"primaryKey;size:20" json:"id"`
-	UserID         string    `gorm:"index;not null" json:"user_id"`
-	SubdomainSlug  string    `gorm:"uniqueIndex;not null" json:"subdomain_slug"`
-	Name           string    `gorm:"not null" json:"name"`
-	SPAMode        bool      `gorm:"default:false" json:"spa_mode"`
-	HasWorker      bool      `gorm:"default:false" json:"has_worker"`
-	ActiveVersion  *int      `json:"active_version"`
-	ActiveDeployID *string   `gorm:"size:20" json:"active_deploy_id,omitempty"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID                      string    `gorm:"primaryKey;size:20" json:"id"`
+	UserID                  string    `gorm:"index;not null" json:"user_id"`
+	SubdomainSlug           string    `gorm:"uniqueIndex;not null" json:"subdomain_slug"`
+	Name                    string    `gorm:"not null" json:"name"`
+	SPAMode                 bool      `gorm:"default:false" json:"spa_mode"`
+	HasWorker               bool      `gorm:"default:false" json:"has_worker"`
+	ActiveVersion           *int      `json:"active_version"`
+	ActiveDeployID          *string   `gorm:"size:20" json:"active_deploy_id,omitempty"`
+	EnvDeclarationsEnforced bool      `gorm:"not null;default:false" json:"-"`
+	CreatedAt               time.Time `json:"created_at"`
 
 	User        User         `gorm:"foreignKey:UserID" json:"-"`
 	Deployments []Deployment `gorm:"foreignKey:SiteID" json:"deployments,omitempty"`
@@ -71,6 +72,10 @@ type Deployment struct {
 	FileHash   string    `gorm:"not null" json:"file_hash"`
 	HasWorker  bool      `gorm:"default:false" json:"has_worker"`
 	UploadedAt time.Time `json:"uploaded_at"`
+
+	// EnvDeclaration is canonical flat JSON. nil means no declaration; a
+	// pointer to "{}" is an explicit empty declaration, not a legacy deployment.
+	EnvDeclaration *string `gorm:"type:text" json:"-"`
 
 	Site Site `gorm:"foreignKey:SiteID" json:"-"`
 }
@@ -155,11 +160,15 @@ type RevokedToken struct {
 // Worker-related models
 
 type WorkerEnvVar struct {
-	ID     string `gorm:"primaryKey;size:20" json:"id"`
-	SiteID string `gorm:"index;not null" json:"site_id"`
-	Name   string `gorm:"not null" json:"name"`
-	Value  string `gorm:"not null" json:"value"`
-	Secret bool   `gorm:"default:false" json:"secret"`
+	ID            string `gorm:"primaryKey;size:20" json:"id"`
+	SiteID        string `gorm:"index;not null" json:"site_id"`
+	Name          string `gorm:"not null" json:"name"`
+	Value         string `gorm:"not null" json:"value"`
+	Secret        bool   `gorm:"default:false" json:"secret"`
+	SecretVersion int    `json:"-"`
+	SecretKeyID   string `json:"-"`
+	SecretNonce   []byte `json:"-"`
+	Ciphertext    []byte `json:"-"`
 
 	Site Site `gorm:"foreignKey:SiteID" json:"-"`
 }

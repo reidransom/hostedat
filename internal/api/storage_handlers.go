@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/cryguy/hostedat/internal/audit"
+	"github.com/cryguy/hostedat/internal/environment"
+	"github.com/cryguy/hostedat/internal/envschema"
 	"github.com/cryguy/hostedat/internal/models"
 	"github.com/cryguy/hostedat/internal/seaweedfs"
 	"github.com/labstack/echo/v4"
@@ -25,12 +27,6 @@ var (
 	bucketNamePattern     = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$`)
 	bindingNamePattern    = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,63}$`)
 	credentialNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,31}$`)
-	reservedBindingNames  = map[string]struct{}{
-		"ASSETS":      {},
-		"__PROTO__":   {},
-		"PROTOTYPE":   {},
-		"CONSTRUCTOR": {},
-	}
 )
 
 type bucketClient interface {
@@ -50,10 +46,10 @@ type iamClient interface {
 
 // StorageHandler manages object storage buckets and S3 credentials.
 type StorageHandler struct {
-	DB        *gorm.DB
-	S3Client  bucketClient
-	IAMClient iamClient
-	Region    string
+	DB          *gorm.DB
+	S3Client    bucketClient
+	IAMClient   iamClient
+	Region      string
 	PublicS3URL string // public-facing S3 URL (e.g. https://storage.example.com)
 }
 
@@ -114,8 +110,17 @@ func (h *StorageHandler) CreateBucket(c echo.Context) error {
 		BucketName: req.BucketName,
 		Public:     req.Public,
 	}
-	if err := h.DB.Create(&bucket).Error; err != nil {
+	if err := models.WithSiteTransaction(h.DB, siteID, func(tx *gorm.DB, site *models.Site) error {
+		if err := environment.CheckBindingCreation(tx, site, req.Name); err != nil {
+			return err
+		}
+		return tx.Create(&bucket).Error
+	}); err != nil {
 		_ = h.S3Client.RemoveBucket(ctx, req.BucketName)
+		var diagnostic *envschema.Diagnostic
+		if errors.As(err, &diagnostic) {
+			return errorJSON(c, http.StatusBadRequest, diagnostic.Error())
+		}
 		if isUniqueConstraintError(err) {
 			return errorJSON(c, http.StatusConflict, "bucket or binding name already exists")
 		}
@@ -546,10 +551,7 @@ func validateBindingName(name string) error {
 	if !bindingNamePattern.MatchString(name) {
 		return fmt.Errorf("name must match ^[A-Z][A-Z0-9_]{0,63}$")
 	}
-	if _, reserved := reservedBindingNames[strings.ToUpper(name)]; reserved {
-		return fmt.Errorf("name is reserved")
-	}
-	return nil
+	return envschema.ValidateRuntimeName(name)
 }
 
 func validateCredentialName(name string) error {

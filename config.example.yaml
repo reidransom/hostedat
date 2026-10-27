@@ -14,6 +14,15 @@ storage_path: ./data/sites
 #   openssl rand -hex 32
 jwt_secret: "change-me-to-a-random-secret"
 
+# Required operator-provisioned encryption key file; never stored beside archives.
+# Owner-only 0600/0400 JSON. See Configuration Reference for migration/rotation.
+# No key is generated or derived from jwt_secret.
+# Before the first start (also for an empty database), stop all writers/workers:
+# hostedat-server --config config.yaml --secrets-maintenance migrate --writers-stopped
+# Back up the database and matching keys separately; never replace a missing key.
+secrets:
+  key_file: /etc/hostedat/secrets-keys.json
+
 # Minimum CLI version required to use the API.
 # Clients with older versions receive HTTP 426 Upgrade Required.
 # Leave empty to allow all versions.
@@ -21,7 +30,7 @@ min_cli_version: ""
 
 # Database configuration
 database:
-  driver: sqlite        # sqlite | postgres | mysql
+  driver: sqlite        # Only supported driver
   dsn: ./data/hostedat.db
 
 # Registration settings (initial seed — managed at runtime via admin API)
@@ -38,7 +47,8 @@ cloudflare:
   api_token: ""
 
 # Worker (server-side JavaScript) configuration.
-# Workers use the V8 JavaScript engine via tommie/v8go (requires CGO_ENABLED=1).
+# Default QuickJS is pure Go. V8 builds use -tags v8 and CGO_ENABLED=1.
+# With C23-default GCC and current v8go, set CGO_CFLAGS=-std=gnu17.
 worker:
   pool_size: 4               # Pre-warmed JS runtimes per site
   memory_limit_mb: 128       # Max memory per runtime

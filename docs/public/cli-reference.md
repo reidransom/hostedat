@@ -1,6 +1,6 @@
 # hostedat CLI Reference
 
-The `hostedat` CLI manages sites, deployments, storage buckets, and S3-compatible credentials. It authenticates with API keys and communicates with a hostedat server over HTTPS.
+The `hostedat` CLI manages sites, deployments, server-side secrets, storage buckets, and S3-compatible credentials. It authenticates with API keys and communicates with a hostedat server over HTTPS.
 
 ---
 
@@ -74,13 +74,25 @@ Created automatically by `hostedat login`. File permissions are set to `0600` (o
 
 ## Site Resolution
 
-Commands that accept a `<site>` argument resolve it in the following order, stopping at the first match:
+Commands that accept a `<site>` argument match exact site IDs, exact subdomain slugs, or case-insensitive display names. If more than one site matches, the command lists the candidates and requires a unique reference; use the site ID to disambiguate. No project linking or saved target is required.
 
-1. Exact site ID (nanoid, 12 lowercase alphanumeric characters)
-2. Site name (display name)
-3. Subdomain slug
+### First secret-backed deployment
 
-This means you can use any of `abc123def456`, `my-blog`, or `my-blog` (if the slug matches) interchangeably in all site commands.
+1. Commit a flat `env.json` or `env.yml` declaration in the invocation directory.
+   Keep local `.env` ignored; declarations contain rules, never production values.
+2. Run `hostedat env check` for local validation. Provision each production name
+   with hidden `hostedat secret put <site> <name>` or an explicitly named secure
+   `secret sync` source outside the upload tree.
+3. Run `hostedat env check --remote --site <site>`, then
+   `hostedat deploy <site> ./dist`. Build your application separately if needed.
+4. Update values explicitly; the next worker invocation sees the change without
+   redeploying. Rollback checks the target artifact against current values and
+   never restores older secrets. Required active names cannot be deleted.
+
+The dashboard supports the same first-deployment order via Worker → Env Vars
+before uploading a declaration-bearing ZIP. Legacy schema-less sites remain
+supported until their first manifest activation; afterwards every deployment
+must include a declaration, even an explicit empty `{}` when removing rules.
 
 ---
 
@@ -93,6 +105,11 @@ This means you can use any of `abc123def456`, `my-blog`, or `my-blog` (if the sl
 | `hostedat sites create <name>` | Create a new site |
 | `hostedat sites delete <site>` | Delete a site and cascade all resources |
 | `hostedat deploy <site> <directory>` | Deploy a directory as a new version |
+| `hostedat secret put <site> <name>` | Create or replace a secret using hidden input or explicit stdin |
+| `hostedat secret sync <site> <file>` | Atomically merge a named dotenv source |
+| `hostedat secret list <site>` | List sorted secret metadata only |
+| `hostedat secret delete <site> <name>` | Delete a secret by site-scoped name |
+| `hostedat env check` | Validate local values or read-only remote secret requirements |
 | `hostedat storage list <site>` | List storage buckets for a site |
 | `hostedat storage create <site>` | Create a storage bucket binding |
 | `hostedat storage update <site> <bucket-id>` | Toggle bucket public/private |
@@ -227,6 +244,43 @@ Site deleted.
 
 Deploy a local directory to a site as a new version. The CLI zips the directory and uploads it via a multipart POST to the server. Each successful deploy increments the version number.
 
+Packaging always excludes symlinks and dotenv files/directories named `.env`
+or `.env.*` in any case, including `.ENV` and nested `.EnV.production/`.
+This intentionally tightens the previous case-sensitive exclusion on Linux;
+version-control/cache exclusions remain in place. Reserved `_hostedat.env.json`
+components cannot be supplied separately as ordinary content.
+Filename exclusions cannot detect secrets renamed or embedded in bundles;
+deploy never reads dotenv values or builds the application.
+
+Discover `env.json` or `env.yml` only in the invocation directory, even when
+uploading `./dist`. If both exist, select one with `--schema <path>`; explicit
+paths resolve from that directory and must end in `.json` or `.yml`. Missing
+explicit files and unsupported extensions fail. No parent-directory search occurs.
+Without either default or an explicit schema, legacy schema-less packaging is unchanged.
+
+The selected declaration is parsed once and serialized in memory as canonical
+flat JSON at artifact-root `_hostedat.env.json`. Its source file (including
+resolved-path/hard-link aliases) is excluded when it lies inside the upload tree.
+A separately supplied canonical manifest is rejected, even if it contains the
+same declarations. Only declaration rules travel in this metadata; the server
+persists its snapshot and removes it from public assets.
+
+Before a manifest-bearing upload, the client requires `secrets-env-v1` and sends
+only canonical declarations to read-only remote validation. Missing/invalid
+stored secrets stop the upload; fix them with explicit `secret put`/`sync`.
+Preflight never activates requirements or writes values. Server activation
+revalidates transactionally and remains authoritative if values change after
+preflight. HTTP is refused except explicit loopback development opt-in via
+`--allow-insecure-loopback`; redirects are refused. Deploy never loads local
+dotenv/shell values, syncs secrets, launches an application build or injects browser values.
+
+```sh
+# From the project root, use its env.json or env.yml while uploading dist:
+hostedat deploy my-app ./dist
+# Select one format explicitly, including when both defaults exist:
+hostedat deploy my-app ./dist --schema env.yml
+```
+
 If `--spa` is passed and the site does not already have SPA mode enabled, the CLI enables it after the upload completes.
 
 If `--spa` is not passed and SPA mode is not already enabled, the CLI performs a heuristic check to detect single-page apps:
@@ -238,7 +292,7 @@ If the heuristic fires, the CLI prints a warning suggesting the user re-deploy w
 
 **Usage:**
 ```
-hostedat deploy <site> <directory> [--spa]
+hostedat deploy <site> <directory> [--spa] [--schema <path>] [--allow-insecure-loopback]
 ```
 
 **Arguments and flags:**
@@ -248,6 +302,8 @@ hostedat deploy <site> <directory> [--spa]
 | `<site>` | yes | string | Site ID, name, or subdomain slug |
 | `<directory>` | yes | string | Path to the directory to deploy (e.g., `./dist`) |
 | `--spa` | no | bool | Enable SPA mode on the site after a successful deploy |
+| `--schema` | no | string | Select a JSON/YAML declaration instead of invocation-directory discovery |
+| `--allow-insecure-loopback` | no | bool | Permit HTTP manifest preflight/upload only to a loopback development server |
 
 **Example (standard deploy):**
 ```bash
@@ -547,6 +603,102 @@ Storage credential deleted.
 
 ---
 
+### hostedat secret
+
+Manage server-side secrets without revealing their values. These commands reuse the
+normal authentication and site resolution above; they do not link a project, save
+a target/source path, build an application, or load local dotenv values implicitly.
+
+```sh
+hostedat secret put my-app TOKEN
+printf '%s' "$PRODUCTION_TOKEN" | hostedat secret put my-app TOKEN --stdin
+hostedat secret sync my-app /secure/production-secrets.txt
+hostedat secret list my-app
+hostedat secret list my-app --json
+hostedat secret delete my-app TOKEN
+hostedat secret delete my-app TOKEN --yes
+```
+
+- **Put:** resolves the server and site and shows a quoted target before reading
+  input. Terminal input is hidden and bounded to 1 MiB. Non-TTY callers must pass
+  `--stdin`; there is no `--value`. Stdin removes exactly one final LF or CRLF,
+  preserving other whitespace, CRs and multiline content. Use stdin for multiline
+  credentials. Values must be UTF-8; required declarations reject empty strings.
+- **Sync:** requires a named regular dotenv file, bounded to 1 MiB and 1–256 entries.
+  It rejects the project's local `.env`, including symlink/hard-link aliases.
+  Use a source outside the deployment tree with owner-only `0600` permissions.
+  Complete syntax/name/declaration validation precedes any server request. One
+  bulk transaction merges supplied names, preserving omitted names and existing
+  IDs; invalid inputs or storage errors do not partially apply. No sequential
+  fallback or pruning occurs. Never put a source file inside an uploaded directory.
+- **Declarations:** put and sync discover only `env.json` or `env.yml` in the
+  invocation directory, or accept `--schema <path>` (relative to that directory).
+  Both defaults present require explicit selection; missing explicit files and
+  unsupported extensions fail. Supplied names must be declared when a schema is
+  present, and all are secrets regardless of prefix. Omitted required declarations
+  may be provisioned separately; local candidate schemas never activate deployment
+  requirements. The server also enforces the running deployment's declarations
+  and binding collisions.
+- **Dotenv syntax:** `NAME=value`, optional `export`, LF/CRLF, quoted `#`, quoted
+  multiline values and comments are supported. Unquoted edge whitespace is
+  trimmed; quoted whitespace is retained. Double-quoted `\\n`/`\\r` escapes are
+  decoded by the maintained parser. Dollar substitutions and backticks remain
+  literal; no shell or project code executes. Duplicate assignments fail.
+- **List:** emits secret entries only, sorted by name, with IDs and `secret=true`.
+  `--json` returns an array of `{id,site_id,name,secret}` metadata, including `[]`
+  for no secrets. It never includes plaintext bindings or secret values.
+- **Delete:** resolves the name within the selected site, refuses plaintext
+  bindings, and prompts `[y/N]` unless `--yes` is supplied. Required active secrets
+  cannot be deleted.
+
+Every secret command requires the server's `secrets-env-v1` capability and HTTPS.
+For explicit local development only, pass `--allow-insecure-loopback` to allow HTTP
+to `localhost` or a literal loopback IP. Remote HTTP and all redirects remain
+forbidden. Errors from environment operations are status-only, not server response
+bodies. Success output contains names/counts only. At-rest encryption cannot stop
+an authorized worker from disclosing a secret, and in-flight requests retain their
+existing environment snapshot.
+
+---
+
+### hostedat env check
+
+Validate every name in a declaration without changing values:
+
+```sh
+hostedat env check
+hostedat env check --schema config/requirements.yml
+hostedat env check --remote --site my-app
+```
+
+Both modes require a declaration. Discover `env.json` or `env.yml` only in the
+invocation directory; use `--schema <path>` when both exist or for another filename.
+Only `.json` and `.yml` are supported. Missing explicit files fail; parent
+directories are never searched. An explicit empty `{}` declaration is valid.
+
+**Local (default):** read only `.env` next to the selected declaration (missing is
+allowed), then overlay explicitly set shell variables for declared names, including
+empty strings. Dotenv syntax/limits are described above. No authentication, server
+connection, file writes, environment mutation, application launch or build occurs.
+Undeclared values are ignored. Required defaults to true and rejects absence/empty;
+optional permits absence, not invalid supplied values. All values remain strings:
+numbers must use finite JSON numeric syntax, booleans are exactly `true`/`false`,
+URLs must be absolute, emails must be bare addresses, JSON must be valid and enum
+matches preserve exact whitespace. Diagnostics name constraints, never values.
+
+**Remote:** `--remote --site <ID|name|slug>` reuses normal credentials and ambiguity
+handling. It sends only the canonical declaration to server-side validation; it
+never opens local `.env` or reads declared shell values. The server checks stored
+secret presence, classification, decrypted types and binding collisions. Even
+`VITE_` names denote secrets; plaintext bindings cannot satisfy declarations.
+Validation never writes values or activates requirements. Remote errors are
+status-only and value-free. HTTPS and `secrets-env-v1` are required; explicit
+`--allow-insecure-loopback` permits loopback HTTP development only. `--site` and
+that transport exception are rejected without `--remote` to prevent accidental
+local-only validation of an intended production target.
+
+---
+
 ### hostedat version
 
 Print the CLI version, git commit hash, and compiled-in default server URL (if set).
@@ -597,6 +749,7 @@ The following commands prompt `[y/N]` before proceeding with a destructive actio
 | `sites delete` | `Delete site <site>? This cannot be undone. [y/N]` |
 | `storage delete` | `Delete storage bucket <id>? This will remove all stored data. [y/N]` |
 | `storage-credentials delete` | `Delete storage credential <id>? Any integrations using it will stop working. [y/N]` |
+| `secret delete` | `Delete secret <name> from site "<site name>" ("<site ID>")? [y/N]` |
 
 Pass `--yes` to skip the prompt in scripts and CI pipelines.
 

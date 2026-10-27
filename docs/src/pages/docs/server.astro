@@ -23,6 +23,11 @@ import CodeBlock from '../../components/CodeBlock.astro';
   </ul>
   <p class="text-sm text-zinc-400">
     Both engines provide the same Workers API and features. If you don't use workers, either engine works identically for static site hosting.
+    QuickJS is the source-build default. V8 requires CGO and a C/C++ toolchain;
+    with current v8go and C23-default GCC, build using
+    <code>CGO_ENABLED=1 CGO_CFLAGS=-std=gnu17 go build -tags v8 ./cmd/server</code>.
+    Both engines have exercised encrypted environment loading and declaration
+    failure refusal; this is not a promise of complete Cloudflare API compatibility.
   </p>
 
   <div class="platform-tabs">
@@ -237,6 +242,20 @@ database:
   </table>
 
   <h2>Running as a service</h2>
+  <p>
+    Before enabling the service, provision the restricted operator encryption key
+    file, configure <code>secrets.key_file</code>, and run offline initialization
+    against the stopped database, even on a fresh installation:
+  </p>
+  <CodeBlock code="hostedat-server --config /etc/hostedat/config.yaml --secrets-maintenance migrate --writers-stopped" lang="bash" />
+  <p>
+    Run maintenance as the service user that owns the key. Stop every other writer
+    and worker first; the acknowledgement flag does not stop processes. Keep
+    consistent database and matching key backups separately. Follow the
+    <a href="/docs/configuration">migration, rotation and recovery procedure</a>
+    before upgrading an existing server. Do not start an old plaintext-reading
+    binary against the encrypted database.
+  </p>
   <p>For production, run hostedat as a systemd service:</p>
   <CodeBlock
     title="/etc/systemd/system/hostedat.service"

@@ -70,7 +70,7 @@ func setupTestEnvWithDataDir(t *testing.T, dataDir string) *testEnv {
 	e := echo.New()
 	e.HTTPErrorHandler = CustomErrorHandler
 	e.Use(SubdomainRouter(db, store, cache, cfg.Domain, nil, nil, nil, nil))
-	RegisterRoutes(e, db, cfg, store, "0.1.0", nil, nil, nil, "", nil)
+	RegisterRoutes(e, db, cfg, store, "0.1.0", nil, nil, nil, "", nil, testEnvironmentService(t, db))
 
 	return &testEnv{
 		e:         e,
@@ -108,7 +108,7 @@ func setupTestEnvWithMinVersion(t *testing.T, minVersion string) *testEnv {
 	e := echo.New()
 	e.HTTPErrorHandler = CustomErrorHandler
 	e.Use(SubdomainRouter(db, store, cache, cfg.Domain, nil, nil, nil, nil))
-	RegisterRoutes(e, db, cfg, store, "0.1.0", nil, nil, nil, "", nil)
+	RegisterRoutes(e, db, cfg, store, "0.1.0", nil, nil, nil, "", nil, testEnvironmentService(t, db))
 
 	return &testEnv{
 		e:         e,
@@ -1024,7 +1024,7 @@ func TestAdmin_Invites(t *testing.T) {
 func deploySite(t *testing.T, env *testEnv, siteID string, deployKey string, files map[string]string) {
 	t.Helper()
 	zipBuf := createTestZip(t, files)
-	if err := env.store.ExtractZip(siteID, deployKey, bytes.NewReader(zipBuf.Bytes()), int64(zipBuf.Len())); err != nil {
+	if _, err := env.store.ExtractZip(siteID, deployKey, bytes.NewReader(zipBuf.Bytes()), int64(zipBuf.Len())); err != nil {
 		t.Fatalf("ExtractZip: %v", err)
 	}
 }
@@ -1743,8 +1743,8 @@ func TestWorker_SetEnvVar_Upsert(t *testing.T) {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
 	}
 	body := parseJSON(t, rec)
-	if body["value"] != "new" {
-		t.Errorf("value = %v, want new", body["value"])
+	if _, present := body["value"]; present {
+		t.Error("secret write response must omit value")
 	}
 	if body["secret"] != true {
 		t.Errorf("secret = %v, want true", body["secret"])
@@ -1851,10 +1851,10 @@ func TestWorker_ListEnvVars_Success(t *testing.T) {
 		t.Errorf("got %d vars, want 2", len(vars))
 	}
 
-	// Check secret masking
+	// Secret responses expose metadata only.
 	for _, v := range vars {
-		if v["name"] == "SECRET" && v["value"] != "********" {
-			t.Errorf("secret value not masked: %v", v["value"])
+		if _, present := v["value"]; v["name"] == "SECRET" && present {
+			t.Error("secret list entry must omit value")
 		}
 		if v["name"] == "PUBLIC" && v["value"] != "visible" {
 			t.Errorf("public value should be visible: %v", v["value"])
@@ -2729,10 +2729,11 @@ func setupTestEnvWithWorker(t *testing.T) *testEnv {
 	}, store)
 	t.Cleanup(func() { workerEngine.Shutdown() })
 
+	envService := testEnvironmentService(t, db)
 	e := echo.New()
 	e.HTTPErrorHandler = CustomErrorHandler
-	e.Use(SubdomainRouter(db, store, cache, cfg.Domain, workerEngine, nil, nil, nil))
-	RegisterRoutes(e, db, cfg, store, "0.1.0", workerEngine, nil, nil, "", nil)
+	e.Use(SubdomainRouter(db, store, cache, cfg.Domain, workerEngine, nil, &WorkerDeps{Environment: envService}, nil))
+	RegisterRoutes(e, db, cfg, store, "0.1.0", workerEngine, nil, nil, "", nil, envService)
 
 	return &testEnv{
 		e:         e,

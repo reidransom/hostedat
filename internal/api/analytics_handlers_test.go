@@ -54,7 +54,7 @@ func setupTestEnvWithAnalytics(t *testing.T) *analyticsTestEnv {
 	e := echo.New()
 	e.HTTPErrorHandler = CustomErrorHandler
 	e.Use(SubdomainRouter(db, store, cache, cfg.Domain, nil, nil, nil, nil))
-	RegisterRoutes(e, db, cfg, store, "0.1.0", nil, nil, nil, "", aDB)
+	RegisterRoutes(e, db, cfg, store, "0.1.0", nil, nil, nil, "", aDB, testEnvironmentService(t, db))
 
 	return &analyticsTestEnv{
 		testEnv: &testEnv{

@@ -3,6 +3,7 @@ package api
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -12,6 +13,7 @@ import (
 	"strconv"
 
 	"github.com/cryguy/hostedat/internal/audit"
+	"github.com/cryguy/hostedat/internal/environment"
 	"github.com/cryguy/hostedat/internal/models"
 	"github.com/cryguy/hostedat/internal/storage"
 	"github.com/cryguy/worker/v2"
@@ -22,6 +24,7 @@ import (
 type DeployHandler struct {
 	DB              *gorm.DB
 	Storage         *storage.Manager
+	Environment     *environment.Service
 	MaxScriptSizeKB int
 	WorkerEngine    interface {
 		CompileAndCache(siteID string, deployKey string, source string) ([]byte, error)
@@ -82,9 +85,35 @@ func (h *DeployHandler) Deploy(c echo.Context) error {
 	if _, err := tmpFile.Seek(0, io.SeekStart); err != nil {
 		return errorJSON(c, http.StatusInternalServerError, "failed to process uploaded file")
 	}
-	if err := h.Storage.ExtractZip(siteID, deployID, tmpFile, written); err != nil {
+	declaration, err := h.Storage.ExtractZip(siteID, deployID, tmpFile, written)
+	if err != nil {
 		log.Printf("deploy: failed to extract zip for site %s: %v", siteID, err)
 		return errorJSON(c, http.StatusBadRequest, "invalid zip file")
+	}
+	// Every failure after extraction removes both staged assets/bytecode and
+	// any compiled pool. Activation is the only ownership transfer.
+	activated := false
+	defer func() {
+		if !activated {
+			if h.WorkerEngine != nil {
+				h.WorkerEngine.InvalidatePool(siteID, deployID)
+			}
+			_ = os.RemoveAll(h.Storage.GetDeploymentPath(siteID, deployID))
+		}
+	}()
+	service := h.environments()
+	schema, err := service.Declaration(&models.Deployment{ID: deployID, SiteID: siteID, EnvDeclaration: declaration})
+	if err != nil {
+		return envOperationError(c, err)
+	}
+	if err := h.DB.Transaction(func(tx *gorm.DB) error {
+		var current models.Site
+		if err := tx.First(&current, "id = ?", siteID).Error; err != nil {
+			return err
+		}
+		return service.ValidateActivation(tx, &current, schema)
+	}); err != nil {
+		return envOperationError(c, err)
 	}
 
 	// Check for _worker.js and compile if present
@@ -95,7 +124,6 @@ func (h *DeployHandler) Deploy(c echo.Context) error {
 		source, err := worker.BundleWorkerScript(deployPath)
 		if err != nil {
 			log.Printf("deploy: bundle error for site %s: %v", siteID, err)
-			_ = os.RemoveAll(deployPath)
 			return errorJSON(c, http.StatusBadRequest, "worker script bundling failed: check your import paths")
 		}
 
@@ -104,14 +132,12 @@ func (h *DeployHandler) Deploy(c echo.Context) error {
 			maxScriptBytes = 1024 * 1024
 		}
 		if len(source) > maxScriptBytes {
-			_ = os.RemoveAll(h.Storage.GetDeploymentPath(siteID, deployID))
 			return errorJSON(c, http.StatusBadRequest, fmt.Sprintf("_worker.js exceeds maximum size (%d KB)", h.MaxScriptSizeKB))
 		}
 
 		bytecode, err := h.WorkerEngine.CompileAndCache(siteID, deployID, source)
 		if err != nil {
 			log.Printf("deploy: compilation error for site %s: %v", siteID, err)
-			_ = os.RemoveAll(h.Storage.GetDeploymentPath(siteID, deployID))
 			return errorJSON(c, http.StatusBadRequest, "worker compilation failed: check your script syntax")
 		}
 
@@ -125,32 +151,35 @@ func (h *DeployHandler) Deploy(c echo.Context) error {
 	var deployment models.Deployment
 	var oldDeployID *string
 
-	txErr := h.DB.Transaction(func(tx *gorm.DB) error {
+	txErr := models.WithSiteTransaction(h.DB, siteID, func(tx *gorm.DB, freshSite *models.Site) error {
+		if err := service.ValidateActivation(tx, freshSite, schema); err != nil {
+			return err
+		}
 		var maxVersion int
-		tx.Model(&models.Deployment{}).Where("site_id = ?", siteID).Select("COALESCE(MAX(version), 0)").Scan(&maxVersion)
+		if err := tx.Model(&models.Deployment{}).Where("site_id = ?", siteID).Select("COALESCE(MAX(version), 0)").Scan(&maxVersion).Error; err != nil {
+			return err
+		}
 		nextVersion := maxVersion + 1
 
-		var freshSite models.Site
-		if err := tx.First(&freshSite, "id = ?", siteID).Error; err != nil {
-			return fmt.Errorf("reload site: %w", err)
-		}
 		oldDeployID = freshSite.ActiveDeployID
 
 		deployment = models.Deployment{
-			ID:        deployID,
-			SiteID:    siteID,
-			Version:   nextVersion,
-			FileHash:  fileHash,
-			HasWorker: hasWorker,
+			ID:             deployID,
+			SiteID:         siteID,
+			Version:        nextVersion,
+			FileHash:       fileHash,
+			HasWorker:      hasWorker,
+			EnvDeclaration: declaration,
 		}
 		if err := tx.Create(&deployment).Error; err != nil {
 			return fmt.Errorf("create deployment: %w", err)
 		}
 
-		if err := tx.Model(&freshSite).Updates(map[string]interface{}{
-			"active_version":   nextVersion,
-			"active_deploy_id": deployID,
-			"has_worker":       hasWorker,
+		if err := tx.Model(freshSite).Updates(map[string]interface{}{
+			"active_version":            nextVersion,
+			"active_deploy_id":          deployID,
+			"has_worker":                hasWorker,
+			"env_declarations_enforced": freshSite.EnvDeclarationsEnforced || declaration != nil,
 		}).Error; err != nil {
 			return fmt.Errorf("update site: %w", err)
 		}
@@ -158,12 +187,12 @@ func (h *DeployHandler) Deploy(c echo.Context) error {
 		return nil
 	})
 	if txErr != nil {
-		_ = os.RemoveAll(h.Storage.GetDeploymentPath(siteID, deployID))
-		return errorJSON(c, http.StatusInternalServerError, "failed to create deployment")
+		return envOperationError(c, txErr)
 	}
+	activated = true
 
 	// Invalidate old worker pool AFTER DB transaction commits.
-	if hasWorker && h.WorkerEngine != nil && oldDeployID != nil {
+	if h.WorkerEngine != nil && oldDeployID != nil {
 		h.WorkerEngine.InvalidatePool(siteID, *oldDeployID)
 	}
 
@@ -189,27 +218,40 @@ func (h *DeployHandler) Rollback(c echo.Context) error {
 		return errorJSON(c, http.StatusForbidden, "access denied")
 	}
 
-	if site.ActiveVersion != nil && *site.ActiveVersion == version {
+	var dep models.Deployment
+	var oldDeployID *string
+	errAlreadyActive := fmt.Errorf("already the active version")
+	err := models.WithSiteTransaction(h.DB, siteID, func(tx *gorm.DB, freshSite *models.Site) error {
+		if freshSite.ActiveVersion != nil && *freshSite.ActiveVersion == version {
+			return errAlreadyActive
+		}
+		if err := tx.First(&dep, "site_id = ? AND version = ?", siteID, version).Error; err != nil {
+			return err
+		}
+		service := h.environments()
+		schema, err := service.Declaration(&dep)
+		if err != nil {
+			return err
+		}
+		if err := service.ValidateActivation(tx, freshSite, schema); err != nil {
+			return err
+		}
+		oldDeployID = freshSite.ActiveDeployID
+		return tx.Model(freshSite).Updates(map[string]interface{}{
+			"active_version":            version,
+			"active_deploy_id":          dep.ID,
+			"has_worker":                dep.HasWorker,
+			"env_declarations_enforced": freshSite.EnvDeclarationsEnforced || dep.EnvDeclaration != nil,
+		}).Error
+	})
+	if err == errAlreadyActive {
 		return errorJSON(c, http.StatusBadRequest, "already the active version")
 	}
-
-	// Verify the deployment exists
-	var dep models.Deployment
-	if err := h.DB.First(&dep, "site_id = ? AND version = ?", siteID, version).Error; err != nil {
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return errorJSON(c, http.StatusNotFound, "deployment not found")
 	}
-
-	oldDeployID := site.ActiveDeployID
-
-	// Update site to the target version in a transaction.
-	if err := h.DB.Transaction(func(tx *gorm.DB) error {
-		return tx.Model(&site).Updates(map[string]interface{}{
-			"active_version":   version,
-			"active_deploy_id": dep.ID,
-			"has_worker":       dep.HasWorker,
-		}).Error
-	}); err != nil {
-		return errorJSON(c, http.StatusInternalServerError, "failed to rollback deployment")
+	if err != nil {
+		return envOperationError(c, err)
 	}
 
 	// Invalidate old worker pool after successful transaction.
@@ -257,4 +299,11 @@ func (h *DeployHandler) List(c echo.Context) error {
 		"total":       total,
 		"page":        page,
 	})
+}
+
+func (h *DeployHandler) environments() *environment.Service {
+	if h.Environment != nil {
+		return h.Environment
+	}
+	return &environment.Service{DB: h.DB}
 }

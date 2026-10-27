@@ -14,6 +14,11 @@ type Client struct {
 	Token      string
 	Version    string
 	HTTPClient *http.Client
+
+	// AllowInsecureLoopback explicitly opts into HTTP for local development only.
+	// It never permits remote HTTP, redirects, or disabled TLS verification.
+	AllowInsecureLoopback bool
+	safeErrors            bool
 }
 
 type APIError struct {
@@ -52,13 +57,26 @@ func (c *Client) do(method, path string, body io.Reader, contentType string) (*h
 		req.Header.Set("Content-Type", contentType)
 	}
 
-	resp, err := c.HTTPClient.Do(req)
+	// Never replay a write body, or forward authorization, via a redirect.
+	// Copy the caller's client so its transport/timeout remain intact.
+	httpClient := *c.HTTPClient
+	httpClient.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
+	}
+	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+		_ = resp.Body.Close()
+		return nil, &APIError{StatusCode: resp.StatusCode, Message: "redirect refused; use the server's final URL"}
 	}
 
 	if resp.StatusCode >= 400 {
 		defer func() { _ = resp.Body.Close() }()
+		if c.safeErrors {
+			return nil, &APIError{StatusCode: resp.StatusCode, Message: http.StatusText(resp.StatusCode)}
+		}
 		var errResp struct {
 			Error string `json:"error"`
 		}

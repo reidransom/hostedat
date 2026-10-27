@@ -6,7 +6,7 @@ import CodeBlock from '../../components/CodeBlock.astro';
 <DocsLayout title="CLI Reference">
   <h1>CLI Reference</h1>
   <p>
-    The <code>hostedat</code> CLI manages deployments, storage buckets, and S3-compatible credentials.
+    The <code>hostedat</code> CLI manages deployments, server-side secrets, storage buckets, and S3-compatible credentials.
     It authenticates with API keys and talks to your hostedat server over HTTPS.
   </p>
 
@@ -19,6 +19,8 @@ import CodeBlock from '../../components/CodeBlock.astro';
       <tr><td><code>hostedat login</code></td><td>Authenticate in browser and save API key</td></tr>
       <tr><td><code>hostedat sites ...</code></td><td>Create, list, and delete sites</td></tr>
       <tr><td><code>hostedat deploy ...</code></td><td>Deploy a directory to a site</td></tr>
+      <tr><td><code>hostedat secret ...</code></td><td>Put, atomically sync, list metadata, or delete secrets</td></tr>
+      <tr><td><code>hostedat env check</code></td><td>Validate local values or read-only remote secret requirements</td></tr>
       <tr><td><code>hostedat storage ...</code></td><td>Manage worker storage buckets and uploads</td></tr>
       <tr><td><code>hostedat storage-credentials ...</code></td><td>Manage S3-compatible access keys</td></tr>
       <tr><td><code>hostedat version</code></td><td>Print CLI version and default server</td></tr>
@@ -123,11 +125,90 @@ import CodeBlock from '../../components/CodeBlock.astro';
 
   <hr />
 
+  <h2>Server-side secrets</h2>
+  <CodeBlock code={`hostedat secret put my-app TOKEN
+printf '%s' "$PRODUCTION_TOKEN" | hostedat secret put my-app TOKEN --stdin
+hostedat secret sync my-app /secure/production-secrets.txt
+hostedat secret list my-app --json
+hostedat secret delete my-app TOKEN --yes`} lang="bash" />
+  <p>
+    Secret commands reuse normal credentials and site IDs, names or slugs, with
+    existing ambiguity handling. They never link a project or save a target.
+    Put resolves and displays the target before reading hidden terminal input.
+    Non-TTY callers must explicitly pass <code>--stdin</code>; there is no value
+    argument. Input is bounded to 1 MiB and exactly one trailing LF or CRLF is
+    removed; all other whitespace and multiline content is preserved.
+  </p>
+  <p>
+    Put and sync accept <code>--schema &lt;path&gt;</code> or discover
+    <code>env.json</code>/<code>env.yml</code> only in the invocation directory.
+    Both defaults require explicit selection. All supplied names must be declared
+    when a schema is selected, regardless of prefix, and the active server schema
+    remains authoritative. Candidate schemas do not activate requirements.
+  </p>
+  <p>
+    Sync requires a named regular dotenv file, bounded to 1 MiB and 256 entries.
+    The local root <code>.env</code> and equivalent aliases are rejected.
+    Keep production sources outside the deployment tree with mode 0600.
+    Complete source validation precedes requests; one atomic merge preserves
+    omitted names and IDs with no pruning or per-name fallback. Quoted hashes,
+    LF/CRLF, quoted multiline values and comments are supported. Unquoted edge
+    whitespace is trimmed; quoted whitespace is preserved. Substitutions remain
+    literal and no shell or project code executes.
+  </p>
+  <p>
+    List shows sorted secret metadata only, never values or plaintext bindings,
+    including in JSON. Delete resolves a name within the site, refuses plaintext
+    bindings and requires <code>y</code> confirmation unless <code>--yes</code>
+    is passed. Active required secrets cannot be deleted.
+  </p>
+  <p>
+    All secret commands require HTTPS and server capability
+    <code>secrets-env-v1</code>. For explicit loopback development only, use
+    <code>--allow-insecure-loopback</code>. Remote HTTP and redirects are refused.
+    These commands never read local dotenv implicitly, build an application or
+    reveal/export secrets. Authorized worker code can still disclose its bindings.
+  </p>
+
+  <hr />
+
+  <h2>Environment checks</h2>
+  <CodeBlock code={`hostedat env check
+hostedat env check --schema config/requirements.yml
+hostedat env check --remote --site my-app`} lang="bash" />
+  <p>
+    Both modes require an explicit or discovered declaration. Discovery checks only
+    <code>env.json</code>/<code>env.yml</code> in the invocation directory; use
+    <code>--schema</code> if both exist. Local mode reads the <code>.env</code>
+    next to the selected declaration and overlays explicitly set declared shell
+    variables, including empty strings. A missing dotenv is allowed. No credentials,
+    network, writes, environment mutation, application launch or build are involved.
+  </p>
+  <p>
+    Required defaults to true and rejects missing/empty values. Optional permits
+    absence, not invalid supplied values. Undeclared local values are ignored.
+    Values remain strings: booleans are exactly <code>true</code>/<code>false</code>,
+    numbers use finite JSON syntax, and enum matches preserve whitespace.
+    Diagnostics show names and constraints, never supplied values.
+  </p>
+  <p>
+    Remote mode requires <code>--site</code> and normal credentials. It sends only
+    canonical declarations, never reads local dotenv or declared shell values,
+    and never mutates secrets or activates requirements. Stored plaintext bindings
+    cannot satisfy declarations, including <code>VITE_</code> names. HTTPS,
+    capability negotiation, redirect refusal and the explicit loopback-development
+    exception apply as for secret commands. Remote errors are status-only.
+    <code>--site</code> and <code>--allow-insecure-loopback</code> require
+    <code>--remote</code> to prevent accidentally checking only local values.
+  </p>
+
+  <hr />
+
   <h2>Deployments</h2>
 
   <h3>hostedat deploy</h3>
   <p>Deploy a directory to a site. The directory is zipped and uploaded as a new version.</p>
-  <CodeBlock code='hostedat deploy <site> <directory> [--spa]' lang="bash" />
+  <CodeBlock code='hostedat deploy <site> <directory> [--spa] [--schema <path>]' lang="bash" />
 
   <table>
     <thead>
@@ -137,6 +218,8 @@ import CodeBlock from '../../components/CodeBlock.astro';
       <tr><td><code>&lt;site&gt;</code></td><td>Site ID, name, or subdomain slug</td></tr>
       <tr><td><code>&lt;directory&gt;</code></td><td>Path to the directory to upload (e.g., <code>./dist</code>)</td></tr>
       <tr><td><code>--spa</code></td><td>Enable SPA mode on the site after successful deploy</td></tr>
+      <tr><td><code>--schema</code></td><td>Select a <code>.json</code> or <code>.yml</code> declaration relative to the invocation directory</td></tr>
+      <tr><td><code>--allow-insecure-loopback</code></td><td>Permit HTTP manifest preflight/upload only to a loopback development server</td></tr>
     </tbody>
   </table>
 
@@ -147,6 +230,34 @@ import CodeBlock from '../../components/CodeBlock.astro';
 # Deployed! Version: v4`}
     lang="bash"
   />
+
+  <p>
+    Discovery checks only <code>env.json</code>/<code>env.yml</code> in the invocation
+    directory, even when deploying <code>dist</code>. Both defaults require an explicit
+    <code>--schema</code> choice. Missing explicit files fail; without a schema, legacy
+    uploads remain unchanged. JSON and YAML become the same canonical private
+    <code>_hostedat.env.json</code> metadata in memory. The selected source is excluded
+    from ordinary packaging, and a separately supplied canonical manifest is rejected.
+  </p>
+  <p>
+    Manifest uploads require server capability support and read-only validation of
+    stored secrets before uploading. Only declarations are sent; deployment does not
+    read local dotenv/shell values, sync secrets, build applications or inject browser
+    values. Fix missing production values with explicit secret commands. Server
+    activation revalidates transactionally. HTTPS is required except the explicit
+    loopback development flag; redirects are refused.
+  </p>
+  <p>
+    Packaging keeps case-insensitive dotenv and symlink exclusions. The server
+    removes declaration metadata from public assets. Filename rules cannot detect
+    secrets renamed or embedded in application bundles.
+    Declaration files (including enum choices) are rules, not a place to store
+    credentials. After the first successful manifest deployment, later uploads
+    must also include a manifest. An explicit empty declaration can remove rules,
+    but does not re-enable schema-less deployments. Dashboard/API rollback checks
+    the selected artifact against current secret values and never restores old values.
+  </p>
+  <CodeBlock code='hostedat deploy my-app ./dist --schema env.yml' lang="bash" />
 
   <hr />
 

@@ -558,7 +558,7 @@ func TestClient_Deploy(t *testing.T) {
 	defer srv.Close()
 
 	c := New(srv.URL, "test-token")
-	dep, err := c.Deploy("abc", tmpDir)
+	dep, err := c.Deploy("abc", tmpDir, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -584,7 +584,7 @@ func TestZipDirectory_Valid(t *testing.T) {
 		t.Fatalf("failed to write file2.txt: %v", err)
 	}
 
-	zipData, err := zipDirectory(tmpDir)
+	zipData, err := zipDirectory(tmpDir, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -612,7 +612,7 @@ func TestZipDirectory_Valid(t *testing.T) {
 }
 
 func TestZipDirectory_NotFound(t *testing.T) {
-	_, err := zipDirectory("/nonexistent/path/that/does/not/exist")
+	_, err := zipDirectory("/nonexistent/path/that/does/not/exist", nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -629,7 +629,7 @@ func TestZipDirectory_NotADirectory(t *testing.T) {
 	defer func() { _ = os.Remove(tmpFile.Name()) }()
 	_ = tmpFile.Close()
 
-	_, err = zipDirectory(tmpFile.Name())
+	_, err = zipDirectory(tmpFile.Name(), nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -739,7 +739,7 @@ func TestDeploy_EmptyDirectory(t *testing.T) {
 	defer srv.Close()
 
 	c := New(srv.URL, "test-token")
-	dep, err := c.Deploy("abc", tmpDir)
+	dep, err := c.Deploy("abc", tmpDir, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -817,7 +817,7 @@ func TestDeploy_NestedDirectories(t *testing.T) {
 	defer srv.Close()
 
 	c := New(srv.URL, "test-token")
-	dep, err := c.Deploy("abc", tmpDir)
+	dep, err := c.Deploy("abc", tmpDir, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

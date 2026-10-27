@@ -86,6 +86,39 @@ hostedat deploy my-portfolio ./dist
 
   <p>Each deploy creates a new version. The latest version is served immediately.</p>
 
+  <h2>First deployment with secrets</h2>
+  <p>
+    Commit a flat <code>env.json</code> or <code>env.yml</code> containing validation
+    rules, never values. Every declared name is a server-side secret, including
+    names with browser-tool prefixes. Local ignored <code>.env</code> values are
+    not production inputs.
+  </p>
+  <CodeBlock title="env.json" code={`{
+  "TOKEN": { "type": "string" }
+}`} lang="json" />
+  <CodeBlock code={`# Run from the project root; build the application separately.
+hostedat env check
+hostedat secret put my-portfolio TOKEN
+hostedat env check --remote --site my-portfolio
+hostedat deploy my-portfolio ./dist`} lang="bash" />
+  <p>
+    Put prompts without echo; CI must use explicit <code>--stdin</code>. For an
+    atomic merge, use <code>secret sync</code> with a named secure production file
+    outside the deployment tree, not your local <code>.env</code>. Deploy packages
+    only canonical declaration metadata and never synchronizes values, builds
+    applications or injects browser configuration. Updates reach the next worker
+    invocation without redeploying.
+  </p>
+  <p>
+    In the dashboard, provision values under <strong>Worker → Env Vars</strong>
+    with <strong>Secret</strong> selected before the first deployment. Upload a
+    ZIP containing artifact-root <code>_hostedat.env.json</code>. Missing names or
+    invalid types prevent activation. Once opted in, every later deployment
+    needs a manifest; rollback validates current values, not historical secrets.
+    See <a href="/docs/cli">CLI Reference</a> and
+    <a href="/docs/configuration">operator key setup and migration</a>.
+  </p>
+
   <h2>CI/CD Integration</h2>
   <p>Add deploy to your CI pipeline. Set <code>HOSTEDAT_API_KEY</code> as a secret:</p>
   <CodeBlock

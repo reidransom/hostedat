@@ -1,10 +1,13 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 
 	"github.com/cryguy/hostedat/internal/audit"
+	"github.com/cryguy/hostedat/internal/environment"
+	"github.com/cryguy/hostedat/internal/envschema"
 	"github.com/cryguy/hostedat/internal/models"
 	"github.com/cryguy/hostedat/internal/workeradapter"
 	"github.com/cryguy/worker/v2"
@@ -13,11 +16,46 @@ import (
 )
 
 type WorkerHandler struct {
-	DB      *gorm.DB
-	DataDir string
+	DB          *gorm.DB
+	DataDir     string
+	Environment *environment.Service
+}
+
+func (h *WorkerHandler) environments() *environment.Service {
+	if h.Environment != nil {
+		return h.Environment
+	}
+	return &environment.Service{DB: h.DB}
 }
 
 // Env Vars
+
+func envManagementNoStore(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		c.Response().Header().Set("Cache-Control", "no-store")
+		return next(c)
+	}
+}
+
+// workerEnvVarResponse is the management representation, never the stored model.
+// A pointer preserves an empty plaintext value while omitting every secret value.
+type workerEnvVarResponse struct {
+	ID     string  `json:"id"`
+	SiteID string  `json:"site_id"`
+	Name   string  `json:"name"`
+	Secret bool    `json:"secret"`
+	Value  *string `json:"value,omitempty"`
+}
+
+func publicEnvVar(envVar models.WorkerEnvVar) workerEnvVarResponse {
+	result := workerEnvVarResponse{
+		ID: envVar.ID, SiteID: envVar.SiteID, Name: envVar.Name, Secret: envVar.Secret,
+	}
+	if !envVar.Secret {
+		result.Value = &envVar.Value
+	}
+	return result
+}
 
 func (h *WorkerHandler) SetEnvVar(c echo.Context) error {
 	userID, _, role := GetUserFromContext(c)
@@ -33,46 +71,29 @@ func (h *WorkerHandler) SetEnvVar(c echo.Context) error {
 	}
 
 	var req struct {
-		Name   string `json:"name"`
-		Value  string `json:"value"`
-		Secret bool   `json:"secret"`
+		environment.Write
+		Schema json.RawMessage `json:"schema"`
 	}
-	if err := c.Bind(&req); err != nil {
-		return errorJSON(c, http.StatusBadRequest, "invalid request")
-	}
-
-	if req.Name == "" {
-		return errorJSON(c, http.StatusBadRequest, "name is required")
+	if err := decodeEnvRequest(c, &req); err != nil {
+		return errorJSON(c, http.StatusBadRequest, "invalid or oversized environment request")
 	}
 
-	// Upsert: update if exists, create if not
-	var envVar models.WorkerEnvVar
-	result := h.DB.Where("site_id = ? AND name = ?", siteID, req.Name).First(&envVar)
-	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		// Create new
-		envVar = models.WorkerEnvVar{
-			SiteID: siteID,
-			Name:   req.Name,
-			Value:  req.Value,
-			Secret: req.Secret,
-		}
-		if err := h.DB.Create(&envVar).Error; err != nil {
-			return errorJSON(c, http.StatusInternalServerError, "failed to create env var")
-		}
-	} else if result.Error != nil {
-		return errorJSON(c, http.StatusInternalServerError, "database error")
+	if req.Name == "" || req.Value == nil {
+		return errorJSON(c, http.StatusBadRequest, "name and value are required")
 	}
-
-	// Update existing
-	envVar.Value = req.Value
-	envVar.Secret = req.Secret
-	if err := h.DB.Save(&envVar).Error; err != nil {
-		return errorJSON(c, http.StatusInternalServerError, "failed to update env var")
+	schema, err := candidateSchema(req.Schema, false)
+	if err != nil {
+		return envOperationError(c, err)
 	}
+	rows, err := h.environments().Bulk(siteID, []environment.Write{req.Write}, schema)
+	if err != nil {
+		return envOperationError(c, err)
+	}
+	envVar := rows[0]
 
 	audit.Record(h.DB, c, "worker.env.set", "site", siteID, audit.Ptr(req.Name))
 
-	return c.JSON(http.StatusOK, envVar)
+	return c.JSON(http.StatusOK, publicEnvVar(envVar))
 }
 
 func (h *WorkerHandler) ListEnvVars(c echo.Context) error {
@@ -88,19 +109,17 @@ func (h *WorkerHandler) ListEnvVars(c echo.Context) error {
 		return errorJSON(c, http.StatusForbidden, "access denied")
 	}
 
-	var envVars []models.WorkerEnvVar
-	if err := h.DB.Where("site_id = ?", siteID).Find(&envVars).Error; err != nil {
+	envVars, err := h.environments().List(siteID)
+	if err != nil {
 		return errorJSON(c, http.StatusInternalServerError, "failed to list env vars")
 	}
 
-	// Mask secret values
-	for i := range envVars {
-		if envVars[i].Secret {
-			envVars[i].Value = "********"
-		}
+	responses := make([]workerEnvVarResponse, 0, len(envVars))
+	for _, envVar := range envVars {
+		responses = append(responses, publicEnvVar(envVar))
 	}
 
-	return c.JSON(http.StatusOK, envVars)
+	return c.JSON(http.StatusOK, responses)
 }
 
 func (h *WorkerHandler) DeleteEnvVar(c echo.Context) error {
@@ -117,13 +136,12 @@ func (h *WorkerHandler) DeleteEnvVar(c echo.Context) error {
 		return errorJSON(c, http.StatusForbidden, "access denied")
 	}
 
-	var envVar models.WorkerEnvVar
-	if err := h.DB.First(&envVar, "id = ? AND site_id = ?", varID, siteID).Error; err != nil {
+	envVar, err := h.environments().Delete(siteID, varID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return errorJSON(c, http.StatusNotFound, "env var not found")
 	}
-
-	if err := h.DB.Delete(&envVar).Error; err != nil {
-		return errorJSON(c, http.StatusInternalServerError, "failed to delete env var")
+	if err != nil {
+		return envOperationError(c, err)
 	}
 
 	audit.Record(h.DB, c, "worker.env.delete", "site", siteID, audit.Ptr(envVar.Name))
@@ -161,7 +179,16 @@ func (h *WorkerHandler) CreateKVNamespace(c echo.Context) error {
 		SiteID: siteID,
 		Name:   req.Name,
 	}
-	if err := h.DB.Create(&namespace).Error; err != nil {
+	if err := models.WithSiteTransaction(h.DB, siteID, func(tx *gorm.DB, site *models.Site) error {
+		if err := environment.CheckBindingCreation(tx, site, req.Name); err != nil {
+			return err
+		}
+		return tx.Create(&namespace).Error
+	}); err != nil {
+		var diagnostic *envschema.Diagnostic
+		if errors.As(err, &diagnostic) {
+			return errorJSON(c, http.StatusBadRequest, diagnostic.Error())
+		}
 		return errorJSON(c, http.StatusInternalServerError, "failed to create namespace")
 	}
 
@@ -376,7 +403,16 @@ func (h *WorkerHandler) CreateD1Database(c echo.Context) error {
 		SiteID: siteID,
 		Name:   req.Name,
 	}
-	if err := h.DB.Create(&database).Error; err != nil {
+	if err := models.WithSiteTransaction(h.DB, siteID, func(tx *gorm.DB, site *models.Site) error {
+		if err := environment.CheckBindingCreation(tx, site, req.Name); err != nil {
+			return err
+		}
+		return tx.Create(&database).Error
+	}); err != nil {
+		var diagnostic *envschema.Diagnostic
+		if errors.As(err, &diagnostic) {
+			return errorJSON(c, http.StatusBadRequest, diagnostic.Error())
+		}
 		return errorJSON(c, http.StatusInternalServerError, "failed to create database")
 	}
 
@@ -475,7 +511,16 @@ func (h *WorkerHandler) CreateDurableObjectNamespace(c echo.Context) error {
 		SiteID: siteID,
 		Name:   req.Name,
 	}
-	if err := h.DB.Create(&namespace).Error; err != nil {
+	if err := models.WithSiteTransaction(h.DB, siteID, func(tx *gorm.DB, site *models.Site) error {
+		if err := environment.CheckBindingCreation(tx, site, req.Name); err != nil {
+			return err
+		}
+		return tx.Create(&namespace).Error
+	}); err != nil {
+		var diagnostic *envschema.Diagnostic
+		if errors.As(err, &diagnostic) {
+			return errorJSON(c, http.StatusBadRequest, diagnostic.Error())
+		}
 		return errorJSON(c, http.StatusInternalServerError, "failed to create namespace")
 	}
 

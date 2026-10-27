@@ -182,7 +182,8 @@ Exchanges a one-time auth code (from the CLI flow) for a JWT.
 
 ### GET /api/v1/version
 
-Public endpoint returning server and minimum CLI version.
+Public endpoint returning server version, minimum CLI version and versioned
+capabilities. Existing version fields remain unchanged.
 
 **Auth:** None
 
@@ -190,9 +191,25 @@ Public endpoint returning server and minimum CLI version.
 ```json
 {
   "version": "1.2.3",
-  "min_cli_version": "1.0.0"
+  "min_cli_version": "1.0.0",
+  "capabilities": ["secrets-env-v1"]
 }
 ```
+
+`secrets-env-v1` advertises encrypted secret persistence, metadata-only secret
+responses, atomic bulk merge, candidate validation, protected declaration
+artifacts, and deployment/rollback/invocation enforcement. Clients must require
+this exact capability before secret mutations or declaration-bearing uploads;
+an absent/unknown capability is not inferred from a high server version. Upgrade
+older servers rather than falling back to individual writes or public manifests.
+
+The Go environment client requires HTTPS. Local development may explicitly set
+`Client.AllowInsecureLoopback` for HTTP to `localhost` or a literal loopback IP;
+this never permits remote HTTP or disables TLS verification. Capability requests
+use the public endpoint without authorization. The shared Go HTTP helper refuses
+all redirects, so neither credentials nor a write body can be forwarded/replayed.
+Use the server's final URL. Environment-client errors retain HTTP status only,
+not server error bodies, decoder details or transport URLs.
 
 ---
 
@@ -344,6 +361,33 @@ If `_worker.js` is present in the zip, it is validated and cached for V8 executi
 **Request:** `multipart/form-data`
 - `file` (file, required): Zip archive containing site files
 
+Archives are preflighted before deployment files are written. A single common
+wrapper directory (for example `dist/`) is flattened. Original and flattened
+paths must both be safe: dotenv components (`.env` and `.env.*`, case-insensitive),
+traversal, NUL, absolute/drive/UNC paths, backslashes, duplicate normalized
+destinations, file/directory conflicts, symlinks and unsupported types are rejected.
+Limits are 25 MiB compressed, 25 MiB per file, 256 MiB total uncompressed and
+20,000 entries. Failed extraction removes its partial deployment directory.
+
+The only supported environment metadata is artifact-root `_hostedat.env.json`
+after flattening. It must be a valid flat JSON declaration (maximum 1 MiB);
+case aliases, nested/conflicting manifests and metadata directories are rejected.
+The server stores canonical declaration JSON internally and does not extract the
+manifest as a public asset. Before compilation and again inside the coordinated
+activation transaction, declared names must be collision-free and every present
+declared binding must be a secret with a valid decrypted value; required names
+must exist and be nonempty. Safe `400` diagnostics identify names/constraints,
+never values. Failure leaves the previous deployment active and removes staged
+assets, bytecode and compiled pools.
+
+The first successful manifest-bearing activation opts the site into enforcement.
+Every later deploy must include a manifest, including static-only deployments.
+An explicit `{}` may remove requirements but does not disable enforcement.
+Legacy sites that have never opted in still accept schema-less uploads.
+Historic dotenv files and reserved metadata cannot be fetched through static
+serving, rewrites, SPA fallback or worker `env.ASSETS.fetch`. This is a filename
+policy, not a scanner for secrets renamed or embedded in JavaScript bundles.
+
 **Response:** `201 Created`
 ```json
 {
@@ -401,6 +445,12 @@ curl "https://example.com/api/v1/sites/abc123def456/deployments?page=2" \
 
 Roll back the site's active deployment to a previous version.
 
+The target's stored declaration is checked against **current** secret values
+inside the same site transaction as activation. Rollback never restores old
+values. Missing/invalid/plain declared bindings reject activation with safe `400`
+diagnostics, leaving the current deployment unchanged. Enforced sites cannot
+roll back to a schema-less artifact; an explicit empty declaration remains valid.
+
 **Auth:** JWT or API key (must own site or be admin)
 
 **Path params:** `:version` — integer version number
@@ -426,6 +476,38 @@ curl -X POST https://example.com/api/v1/sites/abc123def456/deployments/2/rollbac
 
 Create or update an environment variable (upsert by name).
 
+Environment management responses use `Cache-Control: no-store`. Secret write and
+list responses contain only `id`, `site_id`, `name`, and `secret`; they never
+contain a `value` field or a replacement placeholder. Plain bindings include
+`value`, including a valid empty string. Secret rows use AES-256-GCM encrypted
+storage; the server requires operator key configuration and offline migration.
+
+Use the native CLI's hidden prompt or explicit stdin for production secret
+entry rather than placing real values in shell command arguments. There is no
+secret reveal/export endpoint. `GET /version` advertises `secrets-env-v1`; clients
+must negotiate this capability before secret mutations or declaration uploads,
+use HTTPS (explicit loopback-only development exception), and refuse redirects.
+TLS must also be configured at the server or trusted terminating proxy: encrypted
+database fields do not protect plaintext request bodies on an HTTP connection.
+Declared values are server-side only, including `VITE_` names; authorized worker
+code can still log or return its bindings.
+
+Environment writes and every declaration name (including absent optional names)
+must not collide with a site's KV, D1, storage or Durable Object binding.
+`ASSETS`, `__PROTO__`, `PROTOTYPE`, and `CONSTRUCTOR` are reserved
+case-insensitively. Site-specific binding names otherwise compare exactly:
+`TOKEN` and `token` are distinct, and the type labels `KV`, `D1`, and `CACHE`
+are not themselves reserved.
+
+The reverse check also applies to all four binding-creation routes: a new
+binding cannot take an existing plain/secret environment name, another
+binding's name, or any name in the established active declaration, even an
+optional secret not yet provisioned. Collision checks and inserts share the
+same database-backed site transaction as environment mutations, so concurrent
+conflicting creates cannot both commit. New collisions return safe `400`
+errors; existing storage duplicate-name checks may return `409`. Legacy KV,
+D1 and Durable Object naming syntax remains unchanged outside these restrictions.
+
 **Auth:** JWT or API key (must own site or be admin)
 
 **Request:**
@@ -437,9 +519,18 @@ Create or update an environment variable (upsert by name).
 }
 ```
 
-- `name` (string, required): Variable name
-- `value` (string, required): Variable value
-- `secret` (bool, optional): If true, value is masked as `********` in list responses
+- `name` (string, required): `[A-Za-z_][A-Za-z0-9_]*`
+- `value` (string, required): Explicit value, at most 1 MiB. Omission/null fails;
+  an explicit empty string is distinct and remains supported.
+- `secret` (bool, optional): Encrypt when true. Omission preserves an existing
+  binding's classification (new bindings default to plain). Explicit false can
+  downgrade only undeclared secrets. Every supplied name declared by a candidate
+  or running schema must remain a secret.
+- `schema` (object, optional): Flat JSON declaration, using the shared declaration
+  rules. Validates the supplied name/value without activating or persisting the
+  candidate. Other candidate-required names need not be supplied for this merge.
+  The active deployment's declaration still constrains the resulting environment;
+  a candidate cannot weaken the running application's requirements.
 
 **Response:** `200 OK`
 ```json
@@ -447,7 +538,6 @@ Create or update an environment variable (upsert by name).
   "id": "env123abc456",
   "site_id": "abc123def456",
   "name": "API_KEY",
-  "value": "secret-value",
   "secret": true
 }
 ```
@@ -460,10 +550,88 @@ curl -X POST https://example.com/api/v1/sites/abc123def456/worker/env \
 ```
 
 ---
+### POST /sites/:id/worker/env/bulk
+
+Atomically merge the supplied names. Omitted names and unrelated legacy plain
+bindings remain untouched; existing names retain their IDs. There is no replace,
+prune, or sequential fallback behavior.
+
+**Auth:** JWT or API key (must own site or be admin)
+
+**Request:**
+```json
+{
+  "entries": [
+    {"name": "API_KEY", "value": "secret-value", "secret": true}
+  ],
+  "schema": {
+    "API_KEY": {"type": "string"},
+    "FUTURE_KEY": {"type": "string"}
+  }
+}
+```
+
+`schema` is optional, uses the flat declaration format, and never becomes active.
+When supplied, every entry must be declared and classified as a secret. Only
+supplied entries are checked against this candidate; omitted `FUTURE_KEY` above
+does not prevent a merge. The complete resulting environment must satisfy the
+running deployment's declaration, including presence, secret classification,
+nonempty required values, and type constraints.
+
+Limits shared by the service and API: 1–256 entries, at most 1 MiB per value,
+4 MiB aggregate unescaped names plus values, 1 MiB per declaration, and 8 MiB
+encoded request body (including JSON escaping). Single writes share the value
+and encoded-body bounds. Requests must contain one JSON object with known fields.
+Duplicate names, omitted/null values, invalid names, malformed declarations,
+classification/type failures, or any storage failure abort the complete batch.
+Explicit empty values are subject to declaration rules. Omitted `secret`
+preserves classification, never implicitly downgrades a stored secret.
+
+**Response:** `200 OK`, an array of `{id, site_id, name, secret}` metadata only.
+Bulk responses omit `value` even for plain bindings. All environment responses,
+including authorization and validation errors, use `Cache-Control: no-store`.
+Invalid input/declaration constraints return safe `400` errors; storage or
+decryption failures return generic `500` errors without request/parser/SQL values.
+Success audits are best-effort after commit and contain only names/count/action.
+
+---
+
+### POST /sites/:id/worker/env/validate
+
+Read-only remote validation of stored secret values against a candidate. No
+binding writes, audit mutation, declaration activation, or local values are
+accepted. Required names must exist, and every present declared name (including
+optional ones) must be a secret with a valid decrypted string value. Plain
+bindings cannot satisfy secret declarations.
+
+**Auth:** JWT or API key (must own site or be admin)
+
+**Request:**
+```json
+{"schema":{"API_KEY":{"type":"string"}}}
+```
+
+The `schema` field is required; `{}` is an explicit empty declaration, while
+omission/null is invalid. Unknown fields, including submitted `values`, fail.
+Declaration/body bounds match bulk. Validation uses one database read snapshot.
+All names are checked for runtime reservations and site binding collisions even
+when optional and absent. This check does not reserve or activate candidate names.
+
+**Response:** `200 OK`:
+```json
+{"valid":true,"names":["API_KEY"]}
+```
+
+Failure returns a safe `400` naming the first unsatisfied variable/constraint,
+or a generic `500` for storage/decryption errors. No stored values are returned.
+
+---
+
 
 ### GET /sites/:id/worker/env
 
-List all environment variables. Secret values are masked as `********`.
+List all environment variables. Secret entries omit `value`; plain entries include
+their value, even when it is empty. An empty list is returned as `[]`.
 
 **Auth:** JWT or API key (must own site or be admin)
 
@@ -474,17 +642,22 @@ List all environment variables. Secret values are masked as `********`.
     "id": "env123abc456",
     "site_id": "abc123def456",
     "name": "API_KEY",
-    "value": "********",
     "secret": true
   }
 ]
 ```
 
+The dashboard renders its secret placeholder locally. Enter an existing name
+and a replacement value to update it; the editor preserves that entry's secret
+or plain classification and never fills the form with a hidden value.
+
 ---
 
 ### DELETE /sites/:id/worker/env/:varId
 
-Delete an environment variable.
+Delete an environment variable, scoped to both site and variable ID. A required
+name in the active deployment's declaration cannot be deleted (`400`); optional
+names may be deleted. Deletion reads metadata only, without decrypting values.
 
 **Auth:** JWT or API key (must own site or be admin)
 

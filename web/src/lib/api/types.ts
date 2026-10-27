@@ -63,9 +63,18 @@ export interface InstanceSettings {
 	invite_required: boolean;
 }
 
-export interface WorkerEnvVar {
+interface WorkerEnvVarMetadata {
 	id: string;
 	site_id: string;
+	name: string;
+}
+
+export type WorkerEnvVar = WorkerEnvVarMetadata & (
+	| { secret: false; value: string }
+	| { secret: true; value?: never }
+);
+
+export interface WorkerEnvVarWrite {
 	name: string;
 	value: string;
 	secret: boolean;

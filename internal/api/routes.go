@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/cryguy/hostedat/internal/config"
+	"github.com/cryguy/hostedat/internal/environment"
+	"github.com/cryguy/hostedat/internal/envschema"
 	"github.com/cryguy/hostedat/internal/seaweedfs"
 	"github.com/cryguy/hostedat/internal/storage"
 	"github.com/cryguy/worker/v2"
@@ -14,7 +16,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func RegisterRoutes(e *echo.Echo, db *gorm.DB, cfg *config.Config, store *storage.Manager, serverVersion string, workerEngine *worker.Engine, s3Client *minio.Client, iamClient *seaweedfs.Client, region string, analyticsDB *gorm.DB) {
+func RegisterRoutes(e *echo.Echo, db *gorm.DB, cfg *config.Config, store *storage.Manager, serverVersion string, workerEngine *worker.Engine, s3Client *minio.Client, iamClient *seaweedfs.Client, region string, analyticsDB *gorm.DB, envService *environment.Service) {
 	// API-wide rate limit (default 20 req/s per IP, separate from global; 0 = disabled)
 	var apiMiddlewares []echo.MiddlewareFunc
 	if cfg.RateLimit.API > 0 {
@@ -24,21 +26,22 @@ func RegisterRoutes(e *echo.Echo, db *gorm.DB, cfg *config.Config, store *storag
 
 	// Public version endpoint
 	api.GET("/version", func(c echo.Context) error {
-		return c.JSON(http.StatusOK, map[string]string{
+		return c.JSON(http.StatusOK, map[string]any{
 			"version":         serverVersion,
 			"min_cli_version": cfg.MinCLIVersion,
+			"capabilities":    []string{envschema.SecretsCapability},
 		})
 	})
 
 	authHandler := &AuthHandler{DB: db, JWTSecret: cfg.JWTSecret}
 	siteHandler := &SiteHandler{DB: db, Storage: store, S3Client: s3Client, IAMClient: iamClient, DataDir: cfg.Worker.DataDir}
-	deployHandler := &DeployHandler{DB: db, Storage: store, MaxScriptSizeKB: cfg.Worker.MaxScriptSizeKB}
+	deployHandler := &DeployHandler{DB: db, Storage: store, MaxScriptSizeKB: cfg.Worker.MaxScriptSizeKB, Environment: envService}
 	if workerEngine != nil {
 		deployHandler.WorkerEngine = workerEngine
 	}
 	apiKeyHandler := &APIKeyHandler{DB: db}
 	adminHandler := &AdminHandler{DB: db, Storage: store, S3Client: s3Client, IAMClient: iamClient}
-	workerHandler := &WorkerHandler{DB: db, DataDir: cfg.Worker.DataDir}
+	workerHandler := &WorkerHandler{DB: db, DataDir: cfg.Worker.DataDir, Environment: envService}
 
 	// Public auth routes — stricter rate limit (default 5 req/s per IP; 0 = disabled)
 	// Auth is Bearer-token only (JWT/API key), never cookies, so CSRF is not applicable.
@@ -80,9 +83,15 @@ func RegisterRoutes(e *echo.Echo, db *gorm.DB, cfg *config.Config, store *storag
 	sites.POST("/:id/deployments/:version/rollback", deployHandler.Rollback)
 
 	// Worker routes
-	sites.POST("/:id/worker/env", workerHandler.SetEnvVar)
-	sites.GET("/:id/worker/env", workerHandler.ListEnvVars)
-	sites.DELETE("/:id/worker/env/:varId", workerHandler.DeleteEnvVar)
+	// Put no-store before authentication and rate limiting so failures are not cached.
+	envMiddlewares := append([]echo.MiddlewareFunc{envManagementNoStore}, apiMiddlewares...)
+	envMiddlewares = append(envMiddlewares, AuthMiddleware(db, cfg.JWTSecret), versionCheck)
+	envRoutes := e.Group("/api/v1/sites/:id/worker/env", envMiddlewares...)
+	envRoutes.POST("", workerHandler.SetEnvVar)
+	envRoutes.POST("/bulk", workerHandler.BulkEnvVars)
+	envRoutes.POST("/validate", workerHandler.ValidateEnvVars)
+	envRoutes.GET("", workerHandler.ListEnvVars)
+	envRoutes.DELETE("/:varId", workerHandler.DeleteEnvVar)
 	sites.POST("/:id/worker/kv", workerHandler.CreateKVNamespace)
 	sites.GET("/:id/worker/kv", workerHandler.ListKVNamespaces)
 	sites.DELETE("/:id/worker/kv/:nsId", workerHandler.DeleteKVNamespace)

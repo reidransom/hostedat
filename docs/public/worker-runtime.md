@@ -24,6 +24,30 @@ export default {
 
 Both handlers are optional. A site can have a `fetch` handler only, a `scheduled` handler only, or both.
 
+Secret bindings are decrypted only while constructing a fresh invocation
+environment and remain JavaScript strings. The next invocation sees an update
+without redeploying; an in-flight request or WebSocket keeps its existing snapshot.
+HTTP fails with a generic configuration error without executing the worker if
+storage/decryption or the selected deployment's declaration validation fails.
+Cron skips invalid environments without marking the schedule as run. Required
+names must exist as valid secrets; optional names may be absent, not invalid or
+plain. Binding names cannot collide with platform or site namespace bindings.
+The declaration is parsed once per loaded snapshot, not read from disk for each
+request; values and all binding metadata are loaded in one database read snapshot.
+HTTP, cron and dispatcher factories receive the exact selected deployment ID.
+There is no plaintext-secret fallback. Ordinary undeclared plain bindings remain
+supported. At-rest encryption cannot prevent worker code from returning or
+logging a secret, and does not guarantee memory zeroization.
+
+Provision before the first deployment using native `secret put`/`sync`, or the
+dashboard's Worker → Env Vars tab with Secret selected. Commit flat `env.json`
+or `env.yml` rules, not production values; run `env check --remote --site <site>`
+before `deploy <site> ./dist`. The CLI packages canonical private metadata and
+the server validates it during activation. Rollback checks its artifact against
+current values and does not restore an old secret. Local `.env` is only for local
+checks/application tooling, never an implicit production source. See the
+[CLI reference](cli-reference.md) and [API reference](api-reference.md).
+
 ---
 
 ## `fetch(request, env, ctx)`
@@ -825,6 +849,15 @@ The `tail` handler is called with an array of trace events after the `fetch` or 
 
 The `env` object passed to `fetch` and `scheduled` contains:
 
+Names share one site-scoped namespace across plain variables, secrets, KV,
+D1, object storage and Durable Objects. Management writes and binding creation
+reject collisions in either order, including optional names in the established
+active secret declaration. `ASSETS`, `__PROTO__`, `PROTOTYPE`, and `CONSTRUCTOR`
+are reserved case-insensitively; other names compare exactly, with no blanket
+reservation of type labels such as `KV`, `D1` or `CACHE`. Existing environment
+rows that collide with runtime bindings fail closed at environment loading
+rather than silently shadowing a string with an object.
+
 ### Plain Environment Variables
 
 Set via `POST /api/v1/sites/:id/worker/env` with `secret: false`.
@@ -835,11 +868,26 @@ const value = env.MY_VAR; // string
 
 ### Secret Environment Variables
 
-Set via `POST /api/v1/sites/:id/worker/env` with `secret: true`. Values are masked in API responses but available at full value inside the worker.
+Set via `POST /api/v1/sites/:id/worker/env` with `secret: true`. Values are omitted from management responses, encrypted at rest, and available as full strings only inside the worker environment.
 
 ```js
 const apiKey = env.API_SECRET; // full string, not masked
 ```
+
+### Provisioning Before the First Deployment
+
+On a site you own, open **Worker → Env Vars** even when no worker has been deployed.
+Enter each production value explicitly and select **Secret** for every name in
+the deployment declaration. The form never reads local dotenv files. Secret
+values are hidden in the list; entering an existing name requires a new value
+and preserves its secret/plain classification.
+
+Then open **Deploy** and upload a ZIP containing the worker and an artifact-root
+`_hostedat.env.json` declaration. Missing required names and invalid types appear
+as value-free errors; failed uploads leave the prior deployment (or empty site)
+unchanged. Correct the named values in Env Vars and retry. Other worker tabs
+become available once a worker is deployed. Active required secrets cannot be
+deleted, and updates must continue to satisfy the running declaration.
 
 ### KV Namespaces
 
@@ -953,6 +1001,16 @@ const url = env.IMAGES.publicUrl("photo.jpg");
 ### `ASSETS` Binding
 
 Always available. Serves static files through the full site serving pipeline (respects `_redirects`, `_headers`, 404 handling, SPA mode).
+
+Dotenv components (`.env`, `.env.*`) and reserved `_hostedat.env.json` metadata
+are blocked case-insensitively, including historic files left by older uploads.
+The same resolved-file policy covers direct requests, normalized aliases,
+rewrite targets, SPA fallback and `env.ASSETS.fetch`; a rewrite or SPA mode does
+not authorize returning a blocked artifact. Physical symlink destinations are
+also checked before serving old deployments. New archives reject symlinks.
+Canonical declaration metadata is parsed separately and never extracted to the
+public asset tree. These are filename checks, not secret-content scanning, and
+cannot stop authorized worker code from returning a secret it has received.
 
 ```js
 export default {

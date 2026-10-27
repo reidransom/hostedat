@@ -17,14 +17,14 @@ import (
 type CronRunner struct {
 	db         *gorm.DB
 	engine     *worker.Engine
-	envFactory func(string) *worker.Env
+	envFactory func(string, string) (*worker.Env, error)
 	done       chan struct{}
 	wg         sync.WaitGroup
 }
 
 // NewCronRunner creates and starts a CronRunner that evaluates schedules
 // every minute. Call Shutdown() to stop it.
-func NewCronRunner(db *gorm.DB, engine *worker.Engine, envFactory func(string) *worker.Env) *CronRunner {
+func NewCronRunner(db *gorm.DB, engine *worker.Engine, envFactory func(string, string) (*worker.Env, error)) *CronRunner {
 	cr := &CronRunner{
 		db:         db,
 		engine:     engine,
@@ -78,11 +78,15 @@ func (cr *CronRunner) tick(now time.Time) {
 
 		deployID := *site.ActiveDeployID
 
-		// Load source if not cached (server restart scenario).
-		cr.ensureSource(site.ID, deployID)
-
 		// Build env.
-		env := cr.envFactory(site.ID)
+		env, err := cr.envFactory(site.ID, deployID)
+		if err != nil || env == nil {
+			log.Printf("cron: environment configuration failed for site %s; invocation skipped", site.ID)
+			continue
+		}
+
+		// Load source only after a valid environment was built.
+		cr.ensureSource(site.ID, deployID)
 
 		// Dispatch in goroutine.
 		go cr.dispatch(sched, site.ID, deployID, env)
